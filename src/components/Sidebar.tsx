@@ -3,7 +3,7 @@ import {
   Plus, Sun, Moon, Sparkles, LogOut, Check, CloudLightning, RefreshCw, Menu, X,
   GraduationCap, Code, Database, Cloud, Cpu, Layers, Atom, Terminal, Globe,
   Network, BrainCircuit, Compass, Award, Coffee, Lock, FileText, Server, Landmark,
-  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle
+  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop
 } from 'lucide-react';
 import { Topic, CustomUser } from '../types';
 
@@ -101,7 +101,7 @@ export function Sidebar({
       <div className="flex md:hidden items-center justify-between px-4 py-3 bg-white dark:bg-slate-950 border-b border-slate-250/70 dark:border-slate-800 z-40 transition-colors">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/20 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0">
-            <Sparkles className="w-4 h-4" />
+            <Laptop className="w-4 h-4" />
           </div>
           <div>
             <h1 className="font-bold text-slate-850 dark:text-white text-base leading-none font-sans">
@@ -135,7 +135,7 @@ export function Sidebar({
         <div className="p-6 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 dark:text-blue-450 font-bold shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <Laptop className="w-5 h-5" />
             </div>
             <div>
               <h1 className="font-bold text-slate-800 dark:text-white text-lg leading-none font-sans tracking-tight">
