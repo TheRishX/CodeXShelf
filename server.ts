@@ -60,6 +60,44 @@ if (apiKey) {
   console.warn("GEMINI_API_KEY is not defined in environment variables. AI operations will fail-fast.");
 }
 
+// Helper: generateContent with retry for transient 503/429/500 errors
+async function generateWithRetry(options: any, maxAttempts = 3, initialDelayMs = 1500) {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (!ai) {
+        throw new Error("Gemini AI client is not configured.");
+      }
+      return await ai.models.generateContent(options);
+    } catch (error: any) {
+      lastError = error;
+      const errMsg = String(error.message || "").toLowerCase();
+      const errStatus = error.status || error.statusCode || error.code || 0;
+      
+      const isRetryable = 
+        errStatus === 503 || 
+        errStatus === 429 || 
+        errStatus === 500 ||
+        errMsg.includes("503") || 
+        errMsg.includes("429") || 
+        errMsg.includes("500") || 
+        errMsg.includes("unavailable") || 
+        errMsg.includes("demand") || 
+        errMsg.includes("limit") || 
+        errMsg.includes("overloaded");
+
+      if (attempt < maxAttempts && isRetryable) {
+        const delay = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`[GEMINI RETRY] Attempt ${attempt} failed with error statement: "${error.message}". Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        break;
+      }
+    }
+  }
+  throw lastError;
+}
+
 // REST API Endpoints
 
 // 0. Health checks for container orchestration and rollout validation
@@ -128,7 +166,7 @@ Include:
 - Interactive code scenario (e.g. debugging scenarios, MERN integrations, optimization notes).
 Keep the formatting strictly clean and readable with bold key parameters. Avoid verbose introductions, jump straight into the notes.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateWithRetry({
         model: "gemini-3.5-flash",
         contents: prompt,
       });
@@ -254,7 +292,7 @@ Avoid dry or generic summaries. Craft deep senior-level insight with complete co
       return res.status(400).json({ success: false, error: "Invalid type specified" });
     }
 
-    const response = await ai.models.generateContent({
+    const response = await generateWithRetry({
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
@@ -269,7 +307,11 @@ Avoid dry or generic summaries. Craft deep senior-level insight with complete co
 
   } catch (error: any) {
     console.error("Gemini Generation Error:", error);
-    res.status(500).json({ success: false, error: error.message || "Internal generation failure" });
+    let friendlyMessage = "The AI study helper is currently experiencing extra high peak demand now. Please click the button to try again in a few seconds, or manually insert your learning entry!";
+    if (error.message && error.message.includes("API_KEY")) {
+      friendlyMessage = "API Key error: Please make sure a valid Gemini API Key is configured in your application environment.";
+    }
+    res.status(503).json({ success: false, error: friendlyMessage });
   }
 });
 

@@ -99,7 +99,11 @@ export function Sidebar({
     <>
       {/* Mobile Top Navigation Head */}
       <div className="flex md:hidden items-center justify-between px-4 py-3 bg-white dark:bg-slate-950 border-b border-slate-250/70 dark:border-slate-800 z-40 transition-colors">
-        <div className="flex items-center gap-2">
+        <div 
+          onClick={() => onSelectView('dashboard')}
+          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          title="Go to Home Dashboard"
+        >
           <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/20 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0">
             <Laptop className="w-4 h-4" />
           </div>
@@ -133,7 +137,14 @@ export function Sidebar({
       `}>
         {/* Header brand details */}
         <div className="p-6 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/40">
-          <div className="flex items-center gap-3">
+          <div 
+            onClick={() => {
+              onSelectView('dashboard');
+              setMobileMenuOpen(false);
+            }}
+            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+            title="Go to Home Dashboard"
+          >
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 dark:text-blue-450 font-bold shrink-0">
               <Laptop className="w-5 h-5" />
             </div>

@@ -254,8 +254,8 @@ export function AllQuizzesView({ dbState, onOpenSubtopic, onUpdateDb }: AllQuizz
             <input
               type="text"
               placeholder="Option D (Optional)"
-              value={optionD}
-              onChange={(e) => setNewQuestion(newQuestion)} // No-op replacement
+              value={optionD || ''}
+              onChange={(e) => setOptionD(e.target.value)}
               className="px-3.5 py-2 text-xs rounded-xl border bg-white focus:outline-none"
             />
           </div>

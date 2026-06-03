@@ -2298,7 +2298,7 @@ export function SubtopicView({
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 font-mono">Subtopic Name</label>
                 <input
                   type="text"
-                  value={editSubName}
+                  value={editSubName || ''}
                   onChange={(e) => setEditSubName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-205 dark:border-slate-705 bg-white dark:bg-slate-950 text-slate-905 dark:text-white text-xs focus:outline-none font-sans"
                 />
@@ -2306,7 +2306,7 @@ export function SubtopicView({
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 font-mono">Description</label>
                 <textarea
-                  value={editSubDesc}
+                  value={editSubDesc || ''}
                   rows={3}
                   onChange={(e) => setEditSubDesc(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-205 dark:border-slate-705 bg-white dark:bg-slate-950 text-slate-905 dark:text-white text-xs focus:outline-none font-sans"
@@ -2795,7 +2795,7 @@ export function SubtopicView({
                   <input
                     type="text"
                     required
-                    value={editTitle}
+                    value={editTitle || ''}
                     onChange={(e) => setEditTitle(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                   />
@@ -2808,7 +2808,7 @@ export function SubtopicView({
                   <input
                     type="text"
                     required
-                    value={editTitle}
+                    value={editTitle || ''}
                     onChange={(e) => setEditTitle(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                   />
@@ -2824,7 +2824,7 @@ export function SubtopicView({
                   <input
                     type="url"
                     placeholder="https://example.com/syllabus.pdf"
-                    value={editUrl}
+                    value={editUrl || ''}
                     onChange={(e) => setEditUrl(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-905 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/25 font-sans"
                   />
@@ -2841,7 +2841,7 @@ export function SubtopicView({
                     type="url"
                     required
                     placeholder="https://youtube.com/watch?v=..."
-                    value={editUrl}
+                    value={editUrl || ''}
                     onChange={(e) => setEditUrl(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                   />
@@ -2857,7 +2857,7 @@ export function SubtopicView({
                   <textarea
                     required
                     rows={editingItem.field === 'notes' ? 8 : 4}
-                    value={editContent}
+                    value={editContent || ''}
                     onChange={(e) => setEditContent(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-slate-955 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                   />
@@ -2872,7 +2872,7 @@ export function SubtopicView({
                   </label>
                   <textarea
                     rows={4}
-                    value={editCodeSnippet}
+                    value={editCodeSnippet || ''}
                     onChange={(e) => setEditCodeSnippet(e.target.value)}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-950 border border-slate-200 font-mono text-xs text-emerald-500 rounded-xl focus:outline-none"
                   />
@@ -2906,7 +2906,7 @@ export function SubtopicView({
                     </label>
                     <textarea
                       rows={3}
-                      value={editStarterCode}
+                      value={editStarterCode || ''}
                       onChange={(e) => setEditStarterCode(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 font-mono text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
@@ -2918,7 +2918,7 @@ export function SubtopicView({
                     </label>
                     <textarea
                       rows={3}
-                      value={editSolution}
+                      value={editSolution || ''}
                       onChange={(e) => setEditSolution(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 font-mono text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
@@ -3003,7 +3003,7 @@ export function SubtopicView({
                     <input
                       type="text"
                       placeholder="e.g. Focus most heavily on recursive closures memory leak patterns"
-                      value={editTrackerNotes}
+                      value={editTrackerNotes || ''}
                       onChange={(e) => setEditTrackerNotes(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-805 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none"
                     />
@@ -3032,7 +3032,7 @@ export function SubtopicView({
                       <input
                         type="text"
                         required
-                        value={opt}
+                        value={opt || ''}
                         onChange={(e) => {
                           const copy = [...editOptions];
                           copy[oIdx] = e.target.value;
@@ -3050,7 +3050,7 @@ export function SubtopicView({
                     <textarea
                       required
                       rows={2}
-                      value={editExplanation}
+                      value={editExplanation || ''}
                       onChange={(e) => setEditExplanation(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 text-xs text-gray-950 dark:text-white focus:outline-none"
                     />

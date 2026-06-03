@@ -265,7 +265,7 @@ export function AuthModal({ onLoginSuccess, userEmail = "therishx@gmail.com" }: 
                   </label>
                   <input
                     type="text"
-                    value={nameInput}
+                    value={nameInput || ''}
                     onChange={(e) => setNameInput(e.target.value)}
                     placeholder="Rish"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-450 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-555/10 focus:border-blue-500 transition-all text-xs font-semibold"
@@ -278,7 +278,7 @@ export function AuthModal({ onLoginSuccess, userEmail = "therishx@gmail.com" }: 
                   </label>
                   <input
                     type="email"
-                    value={emailInput}
+                    value={emailInput || ''}
                     onChange={(e) => setEmailInput(e.target.value)}
                     placeholder="therishx@gmail.com"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-450 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-555/10 focus:border-blue-500 transition-all text-xs font-semibold"

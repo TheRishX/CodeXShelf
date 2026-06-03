@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Search, Plus, Trash2, ExternalLink, Star, Filter, 
   BookOpen, Clock, AlertCircle, Edit3, X, Check, Globe,
-  ArrowRight, ArrowLeft, Heart, Bookmark, Settings, Loader2, Pin
+  ArrowRight, ArrowLeft, Heart, Bookmark, Settings, Loader2, Pin,
+  LayoutGrid, List, LayoutList, Kanban, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { DatabaseState, VaultItem } from '../types';
 
@@ -33,17 +34,18 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+  const [vaultLayoutMode, setVaultLayoutMode] = useState<'grid' | 'list' | 'compact' | 'kanban'>('grid');
 
   // Simple step-by-step popup wizard state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VaultItem | null>(null);
-  const [currentStep, setCurrentStep] = useState(1); // 1, 2, or 3
+  const [currentStep, setCurrentStep] = useState(1); // 1 or 2
 
   // Simple modular bookmark form states
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(categoryOptions[0] || 'Development');
+  const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [formError, setFormError] = useState('');
@@ -63,7 +65,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
     setUrl('');
     setTitle('');
     setDescription('');
-    setCategory(categoryOptions[0] || 'Development');
+    setCategory('');
     setNotes('');
     setIsFavorite(false);
     setFormError('');
@@ -81,8 +83,8 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
     setEditingItem(item);
     setUrl(item.url);
     setTitle(item.title);
-    setDescription(item.description);
-    setCategory(item.category);
+    setDescription(item.description || '');
+    setCategory(item.category === 'Uncategorized' ? '' : item.category);
     setNotes(item.notes || '');
     setIsFavorite(item.isFavorite);
     setIsModalOpen(true);
@@ -102,10 +104,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
   };
 
   const validateStep2 = () => {
-    if (!description.trim()) {
-      setFormError('Please enter a brief description of what this website provides.');
-      return false;
-    }
+    // Both items are optional or can be added/edited later, so validation automatically passes
     setFormError('');
     return true;
   };
@@ -113,8 +112,6 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
   const handleNextStep = () => {
     if (currentStep === 1) {
       if (validateStep1()) setCurrentStep(2);
-    } else if (currentStep === 2) {
-      if (validateStep2()) setCurrentStep(3);
     }
   };
 
@@ -129,8 +126,8 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
     e.preventDefault();
     setFormError('');
 
-    if (!title.trim() || !url.trim() || !description.trim()) {
-      setFormError('Please complete the prior steps first.');
+    if (!title.trim() || !url.trim()) {
+      setFormError('Please complete step one (website link and title) first.');
       return;
     }
 
@@ -146,6 +143,9 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
       return;
     }
 
+    const finalDescription = description.trim();
+    const finalCategory = category.trim() || 'Uncategorized';
+
     if (editingItem) {
       // Update item
       const updatedList = vaultItems.map(item => {
@@ -153,9 +153,9 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
           return {
             ...item,
             title: title.trim(),
-            description: description.trim(),
+            description: finalDescription,
             url: formattedUrl,
-            category,
+            category: finalCategory,
             notes: notes.trim() || undefined,
             isFavorite
           };
@@ -168,12 +168,12 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
       const newItem: VaultItem = {
         id: `vault-${Date.now()}`,
         title: title.trim(),
-        description: description.trim(),
+        description: finalDescription,
         url: formattedUrl,
-        category,
+        category: finalCategory,
         notes: notes.trim() || undefined,
         isFavorite,
-        tags: [category.toLowerCase()],
+        tags: [finalCategory.toLowerCase()],
         createdAt: new Date().toISOString()
       };
       onUpdateDb({ vaultItems: [newItem, ...vaultItems] });
@@ -214,6 +214,16 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
     const updatedList = vaultItems.map(item => {
       if (item.id === itemId) {
         return { ...item, isPinned: !item.isPinned };
+      }
+      return item;
+    });
+    onUpdateDb({ vaultItems: updatedList });
+  };
+
+  const moveItemCategory = (itemId: string, destinationCategory: string) => {
+    const updatedList = vaultItems.map(item => {
+      if (item.id === itemId) {
+        return { ...item, category: destinationCategory };
       }
       return item;
     });
@@ -459,80 +469,242 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
         </div>
       </div>
 
-      {/* Bookmark Cards list */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {sortedItems.map(item => {
-          const favicon = getFaviconUrl(item.url);
-          const domain = getDomainName(item.url);
+      {/* Dynamic Vault Layout Switcher */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white dark:bg-slate-905 p-3.5 rounded-2xl border border-slate-201 dark:border-slate-800/60 shadow-xs">
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 font-mono">
+            Vault Layout Shift:
+          </div>
+          <span className="text-[10px] bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-450 px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider font-mono">
+            {vaultLayoutMode} active
+          </span>
+        </div>
 
-          return (
-            <div
-              key={item.id}
-              className={`bg-white dark:bg-slate-905 border rounded-2xl p-5 flex flex-col justify-between gap-5 transition-all shadow-sm ${
-                item.isPinned 
-                  ? 'border-emerald-400 dark:border-emerald-800 shadow-emerald-50/50 dark:shadow-none' 
-                  : 'border-slate-202 dark:border-slate-850/80 hover:border-blue-400 dark:hover:border-slate-700'
-              }`}
-            >
-              <div className="space-y-3">
-                {/* Meta header tag */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {item.isPinned && (
-                      <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-250/20 uppercase tracking-widest flex items-center gap-0.5">
-                        <Pin className="w-2.5 h-2.5 fill-emerald-600 dark:fill-emerald-400 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span>Pinned</span>
+        <div className="flex items-center gap-1.5 w-full sm:w-auto bg-slate-55 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-855">
+          <button
+            type="button"
+            onClick={() => setVaultLayoutMode('grid')}
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              vaultLayoutMode === 'grid'
+                ? 'bg-white dark:bg-slate-850 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-150 dark:border-slate-800'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+            }`}
+            title="Grid Card Board"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Grid Cards</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVaultLayoutMode('list')}
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              vaultLayoutMode === 'list'
+                ? 'bg-white dark:bg-slate-855 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-150 dark:border-slate-800'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+            }`}
+            title="Detailed Rows"
+          >
+            <List className="w-3.5 h-3.5" />
+            <span>Detailed List</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVaultLayoutMode('compact')}
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              vaultLayoutMode === 'compact'
+                ? 'bg-white dark:bg-slate-855 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-150 dark:border-slate-800'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+            }`}
+            title="Ultra-compact Directory"
+          >
+            <LayoutList className="w-3.5 h-3.5" />
+            <span>Compact List</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVaultLayoutMode('kanban')}
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              vaultLayoutMode === 'kanban'
+                ? 'bg-white dark:bg-slate-855 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-150 dark:border-slate-800'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+            }`}
+            title="Interactive Kanban Swimlanes"
+          >
+            <Kanban className="w-3.5 h-3.5" />
+            <span>Kanban Board</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Bookmark Cards/List/Compact/Kanban dynamic layouts wrapper */}
+      {vaultLayoutMode === 'grid' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {sortedItems.map(item => {
+            const favicon = getFaviconUrl(item.url);
+            const domain = getDomainName(item.url);
+
+            return (
+              <div
+                key={item.id}
+                className={`bg-white dark:bg-slate-905 border rounded-2xl p-5 flex flex-col justify-between gap-5 transition-all shadow-sm ${
+                  item.isPinned 
+                    ? 'border-emerald-400 dark:border-emerald-800 shadow-emerald-50/50 dark:shadow-none' 
+                    : 'border-slate-202 dark:border-slate-850/80 hover:border-blue-400 dark:hover:border-slate-700'
+                }`}
+              >
+                <div className="space-y-3">
+                  {/* Meta header tag */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.isPinned && (
+                        <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-250/20 uppercase tracking-widest flex items-center gap-0.5">
+                          <Pin className="w-2.5 h-2.5 fill-emerald-600 dark:fill-emerald-400 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>Pinned</span>
+                        </span>
+                      )}
+                      <span className={`px-2.5 py-0.5 text-[10px] font-black rounded-full border tracking-wide inline-block ${getCategoryTheme(item.category)}`}>
+                        {item.category}
                       </span>
-                    )}
-                    <span className={`px-2.5 py-0.5 text-[10px] font-black rounded-full border tracking-wide inline-block ${getCategoryTheme(item.category)}`}>
-                      {item.category}
-                    </span>
+                    </div>
+
+                    {/* Clean item settings */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => togglePin(item.id, e)}
+                        className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                          item.isPinned 
+                            ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20' 
+                            : 'text-slate-350 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-950'
+                        }`}
+                        title={item.isPinned ? "Unpin Bookmark" : "Pin Bookmark (Sorts to Top)"}
+                      >
+                        <Pin className={`w-4 h-4 ${item.isPinned ? 'fill-emerald-500 text-emerald-600' : ''}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleFavorite(item.id, e)}
+                        className="p-1 rounded-lg text-slate-350 hover:text-amber-500 hover:bg-slate-50 dark:hover:bg-slate-950 transition-colors cursor-pointer"
+                        title="Favorite"
+                      >
+                        <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(item)}
+                        className="p-1 rounded-lg text-slate-350 hover:text-blue-500 hover:bg-slate-50 dark:hover:bg-slate-100/50 transition-colors cursor-pointer"
+                        title="Edit"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1 rounded-lg text-slate-350 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-100/50 transition-colors cursor-pointer"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Clean item settings */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => togglePin(item.id, e)}
-                      className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                        item.isPinned 
-                          ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20' 
-                          : 'text-slate-350 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-950'
-                      }`}
-                      title={item.isPinned ? "Unpin Bookmark" : "Pin Bookmark (Sorts to Top)"}
-                    >
-                      <Pin className={`w-4 h-4 ${item.isPinned ? 'fill-emerald-500 text-emerald-600' : ''}`} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => toggleFavorite(item.id, e)}
-                      className="p-1 rounded-lg text-slate-350 hover:text-amber-500 hover:bg-slate-50 dark:hover:bg-slate-950 transition-colors cursor-pointer"
-                      title="Favorite"
-                    >
-                      <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(item)}
-                      className="p-1 rounded-lg text-slate-350 hover:text-blue-500 hover:bg-slate-50 dark:hover:bg-slate-100/50 transition-colors cursor-pointer"
-                      title="Edit"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-1 rounded-lg text-slate-350 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-100/50 transition-colors cursor-pointer"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  {/* Favicon & Web page title */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
+                      <img
+                        src={favicon}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const globeSvg = e.currentTarget.nextElementSibling;
+                          if (globeSvg) globeSvg.classList.remove('hidden');
+                        }}
+                        className="w-6 h-6 object-contain"
+                      />
+                      <Globe className="w-5 h-5 text-slate-400 hidden" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight leading-tight truncate">
+                        {item.title}
+                      </h3>
+                      <p className="text-xs text-slate-400 dark:text-slate-550 font-medium truncate">
+                        {domain}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Simplistic description text block */}
+                  <p className="text-slate-600 dark:text-slate-400 text-xs font-semibold leading-relaxed line-clamp-2">
+                    {item.description}
+                  </p>
+
+                  {/* Inner Personal review Notes snippet (if any exist) */}
+                  {item.notes && (
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-900/60 rounded-xl">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2">
+                        💡 {item.notes}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Favicon & Web page title */}
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
+                {/* Action buttons footer */}
+                <div className="pt-3 border-t border-slate-101 dark:border-slate-850/60 flex items-center justify-between text-xs">
+                  <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 shrink-0" />
+                    <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                  </span>
+
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-black text-blue-600 hover:text-blue-500 dark:text-blue-400 inline-flex items-center gap-1"
+                  >
+                    <span>Go to Website</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredItems.length === 0 && (
+            <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/5">
+              <AlertCircle className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+              <p className="text-slate-500 dark:text-slate-400 font-sans font-medium text-sm">
+                Your vault feels a little empty!
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Click the button above to add website bookmarks.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {vaultLayoutMode === 'list' && (
+        <div className="space-y-4">
+          {sortedItems.map(item => {
+            const favicon = getFaviconUrl(item.url);
+            const domain = getDomainName(item.url);
+
+            return (
+              <div
+                key={item.id}
+                className={`bg-white dark:bg-slate-905 border rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 transition-all shadow-sm ${
+                  item.isPinned 
+                    ? 'border-emerald-400 dark:border-emerald-800 shadow-emerald-50/50 dark:shadow-none' 
+                    : 'border-slate-202 dark:border-slate-850/80 hover:border-blue-400 dark:hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0 mt-1">
                     <img
                       src={favicon}
                       alt=""
@@ -542,69 +714,372 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                         const globeSvg = e.currentTarget.nextElementSibling;
                         if (globeSvg) globeSvg.classList.remove('hidden');
                       }}
-                      className="w-6 h-6 object-contain"
+                      className="w-7 h-7 object-contain"
                     />
-                    <Globe className="w-5 h-5 text-slate-400 hidden" />
+                    <Globe className="w-6 h-6 text-slate-400 hidden" />
                   </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight leading-tight truncate">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border tracking-wide inline-block ${getCategoryTheme(item.category)}`}>
+                        {item.category}
+                      </span>
+                      {item.isPinned && (
+                        <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-250/20 uppercase tracking-widest flex items-center gap-0.5">
+                          <Pin className="w-2.5 h-2.5 fill-emerald-600 dark:fill-emerald-400 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>Pinned</span>
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight leading-tight">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-slate-400 dark:text-slate-550 font-medium truncate">
-                      {domain}
+                    <p className="text-slate-600 dark:text-slate-400 text-xs font-semibold leading-relaxed">
+                      {item.description}
+                    </p>
+                    {item.notes && (
+                      <div className="p-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-900/60 rounded-xl inline-block">
+                        <p className="text-[11px] text-slate-500 italic">
+                          💡 Note: {item.notes}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-[10px] font-mono text-slate-400">
+                      Saved &bull; {new Date(item.createdAt).toLocaleDateString()} &bull; {domain}
                     </p>
                   </div>
                 </div>
 
-                {/* Simplistic description text block */}
-                <p className="text-slate-600 dark:text-slate-400 text-xs font-semibold leading-relaxed line-clamp-2">
-                  {item.description}
-                </p>
-
-                {/* Inner Personal review Notes snippet (if any exist) */}
-                {item.notes && (
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-900/60 rounded-xl">
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2">
-                      💡 {item.notes}
-                    </p>
+                {/* Actions line */}
+                <div className="flex md:flex-col items-center gap-3 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800/80 justify-between md:justify-center shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => togglePin(item.id, e)}
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        item.isPinned 
+                          ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20' 
+                          : 'text-slate-350 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-950'
+                      }`}
+                      title={item.isPinned ? "Unpin Bookmark" : "Pin Bookmark"}
+                    >
+                      <Pin className={`w-4 h-4 ${item.isPinned ? 'fill-emerald-500 text-emerald-600' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => toggleFavorite(item.id, e)}
+                      className="p-1.5 rounded-lg text-slate-350 hover:text-amber-500 hover:bg-slate-50/50 dark:hover:bg-slate-950 transition-colors cursor-pointer"
+                      title="Favorite"
+                    >
+                      <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(item)}
+                      className="p-1.5 rounded-lg text-slate-350 hover:text-blue-500 hover:bg-slate-50/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Edit"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1.5 rounded-lg text-slate-350 hover:text-red-500 hover:bg-slate-50/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-              </div>
 
-              {/* Action buttons footer */}
-              <div className="pt-3 border-t border-slate-101 dark:border-slate-850/60 flex items-center justify-between text-xs">
-                <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 shrink-0" />
-                  <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-                </span>
-
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-black text-blue-600 hover:text-blue-500 dark:text-blue-400 inline-flex items-center gap-1"
-                >
-                  <span>Go to Website</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-black text-blue-600 hover:text-blue-500 dark:text-blue-400 inline-flex items-center gap-1 text-xs"
+                  >
+                    <span>Go to Website</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
               </div>
+            );
+          })}
+
+          {filteredItems.length === 0 && (
+            <div className="py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/5">
+              <AlertCircle className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+              <p className="text-slate-500 dark:text-slate-400 font-sans font-medium text-sm">
+                Your vault feels empty here.
+              </p>
             </div>
-          );
-        })}
+          )}
+        </div>
+      )}
 
-        {filteredItems.length === 0 && (
-          <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/5">
-            <AlertCircle className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-            <p className="text-slate-500 dark:text-slate-400 font-sans font-medium text-sm">
-              Your vault feels a little empty!
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Click the button above to add website bookmarks.
-            </p>
-          </div>
-        )}
-      </div>
+      {vaultLayoutMode === 'compact' && (
+        <div className="border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-905 divide-y divide-slate-100 dark:divide-slate-850/60 shadow-sm">
+          {sortedItems.map(item => {
+            const favicon = getFaviconUrl(item.url);
+            const domain = getDomainName(item.url);
+
+            return (
+              <div
+                key={item.id}
+                className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-6 h-6 rounded-md bg-slate-50 dark:bg-slate-900 flex items-center justify-center shrink-0 border border-slate-100 dark:border-slate-800">
+                    <img
+                      src={favicon}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const globeSvg = e.currentTarget.nextElementSibling;
+                        if (globeSvg) globeSvg.classList.remove('hidden');
+                      }}
+                      className="w-4.5 h-4.5 object-contain shrink-0"
+                    />
+                    <Globe className="w-3.5 h-3.5 text-slate-400 hidden shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <span className="font-extrabold text-slate-800 dark:text-white truncate">
+                      {item.title}
+                    </span>
+                    <span className="text-slate-400 dark:text-slate-500 select-all font-mono text-[10px] hidden md:inline truncate max-w-xs">
+                      ({domain})
+                    </span>
+                  </div>
+                  <span className={`px-2 py-0.5 text-[9px] font-black rounded-md shrink-0 border uppercase tracking-wider ${getCategoryTheme(item.category)}`}>
+                    {item.category}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-50 dark:border-slate-800">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => togglePin(item.id, e)}
+                      className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${item.isPinned ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-650'}`}
+                      title={item.isPinned ? "Unpin" : "Pin Block"}
+                    >
+                      <Pin className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => toggleFavorite(item.id, e)}
+                      className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${item.isFavorite ? 'text-amber-500' : 'text-slate-300 dark:text-slate-650'}`}
+                      title="Star favourite"
+                    >
+                      <Star className={`w-3.5 h-3.5 ${item.isFavorite ? 'fill-amber-450 text-amber-500' : ''}`} />
+                    </button>
+                    <button
+                      onClick={() => handleOpenEdit(item)}
+                      className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-300 dark:text-slate-600 hover:text-blue-500"
+                      title="Edit"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-300 dark:text-slate-600 hover:text-red-550"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-500 hover:underline font-bold inline-flex items-center gap-0.5 text-[11px] shrink-0"
+                  >
+                    <span>Visit link</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredItems.length === 0 && (
+            <div className="py-12 text-center text-slate-400 text-xs">
+              No matching bookmarks found.
+            </div>
+          )}
+        </div>
+      )}
+
+      {vaultLayoutMode === 'kanban' && (
+        <div className="flex gap-5 overflow-x-auto pb-6 pt-1 select-none">
+          {categoryOptions.map(colCategory => {
+            const laneItems = sortedItems.filter(item => item.category === colCategory);
+
+            return (
+              <div 
+                key={colCategory}
+                className="w-80 min-w-[320px] bg-slate-50/70 dark:bg-slate-950/40 rounded-2xl border border-slate-200/60 dark:border-slate-850 flex flex-col max-h-[640px] shrink-0 overflow-hidden"
+              >
+                {/* Lane Header */}
+                <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-105 dark:border-slate-850/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-0.5 text-xs font-black rounded-lg border tracking-wide uppercase ${getCategoryTheme(colCategory)}`}>
+                      {colCategory}
+                    </span>
+                    <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-450 dark:text-slate-500 font-bold px-2 py-0.5 rounded-md">
+                      {laneItems.length}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCategory(colCategory);
+                      handleOpenAdd();
+                    }}
+                    className="p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-400 hover:text-blue-500 cursor-pointer"
+                    title={`Add item to ${colCategory}`}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Lane Cards container */}
+                <div className="p-3.5 space-y-3.5 overflow-y-auto flex-1 custom-scrollbar min-h-[200px]">
+                  {laneItems.map((item, idx) => {
+                    const favicon = getFaviconUrl(item.url);
+                    const domain = getDomainName(item.url);
+                    
+                    const currentCatIdx = categoryOptions.indexOf(item.category);
+                    const canMoveLeft = currentCatIdx > 0;
+                    const canMoveRight = currentCatIdx < categoryOptions.length - 1;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-white dark:bg-slate-900 border border-slate-201 dark:border-slate-855 rounded-xl p-4 shadow-xs space-y-3 hover:shadow-md transition-all relative group text-left"
+                      >
+                        {/* Meta Pins & Settings */}
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1">
+                            {item.isPinned && (
+                              <span className="p-0.5 rounded bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400" title="Pinned">
+                                <Pin className="w-3 h-3 fill-emerald-500" />
+                              </span>
+                            )}
+                            {item.isFavorite && (
+                              <span className="p-0.5 rounded bg-amber-50 dark:bg-amber-950/20 text-amber-500" title="Starred">
+                                <Star className="w-3 h-3 fill-amber-400" />
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => toggleFavorite(item.id, e)}
+                              type="button"
+                              className="p-1 rounded text-slate-350 hover:text-amber-500 transition-colors cursor-pointer"
+                            >
+                              <Star className={`w-3.5 h-3.5 ${item.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                            </button>
+                            <button
+                              onClick={() => handleOpenEdit(item)}
+                              type="button"
+                              className="p-1 rounded text-slate-350 hover:text-blue-500 transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              type="button"
+                              className="p-1 rounded text-slate-350 hover:text-red-500 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Main Identity */}
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-6 h-6 rounded bg-slate-50 dark:bg-slate-950 flex items-center justify-center shrink-0 border border-slate-100 dark:border-slate-800">
+                            <img
+                              src={favicon}
+                              alt=""
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const globeSvg = e.currentTarget.nextElementSibling;
+                                if (globeSvg) globeSvg.classList.remove('hidden');
+                              }}
+                              className="w-4 h-4 object-contain"
+                            />
+                            <Globe className="w-3.5 h-3.5 text-slate-400 hidden" />
+                          </div>
+                          <div className="min-w-0 flex-1 leading-normal">
+                            <h4 className="font-extrabold text-[12px] text-slate-850 dark:text-white truncate">
+                              {item.title}
+                            </h4>
+                            <span className="text-[10px] text-slate-400 block truncate font-mono">{domain}</span>
+                          </div>
+                        </div>
+
+                        {/* Brief description */}
+                        <p className="text-slate-550 dark:text-slate-400 text-[11px] leading-relaxed line-clamp-2 font-medium">
+                          {item.description}
+                        </p>
+
+                        {/* Inline notes */}
+                        {item.notes && (
+                          <p className="text-[10px] text-slate-500 italic bg-slate-50 dark:bg-slate-950 p-2 rounded-lg border border-slate-100 dark:border-slate-850/60 leading-normal">
+                            💡 {item.notes}
+                          </p>
+                        )}
+
+                        {/* Quick Movement Control Bar (Agile Shift Lanes) */}
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-850/60 flex items-center justify-between">
+                          <button
+                            disabled={!canMoveLeft}
+                            onClick={() => moveItemCategory(item.id, categoryOptions[currentCatIdx - 1])}
+                            className="p-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 rounded disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center text-slate-500"
+                            title={`Move left to ${categoryOptions[currentCatIdx - 1]}`}
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+
+                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono">
+                            Move Lane
+                          </span>
+
+                          <button
+                            disabled={!canMoveRight}
+                            onClick={() => moveItemCategory(item.id, categoryOptions[currentCatIdx + 1])}
+                            className="p-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 rounded disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center text-slate-500"
+                            title={`Move right to ${categoryOptions[currentCatIdx + 1]}`}
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {laneItems.length === 0 && (
+                    <div className="py-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/20 dark:bg-slate-950/25">
+                      <span className="text-[11px] text-slate-400 font-sans font-medium block">Lane is empty</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategory(colCategory);
+                          handleOpenAdd();
+                        }}
+                        className="text-[10px] text-blue-500 hover:underline font-bold mt-1 inline-block"
+                      >
+                        + Add item
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Super Simple Step-by-Step popup wizard dialog */}
       {isModalOpen && (
@@ -629,7 +1104,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
 
             {/* Step progress indicators */}
             <div className="flex items-center justify-center gap-1.5 mb-6">
-              {[1, 2, 3].map(stepNum => (
+              {[1, 2].map(stepNum => (
                 <div key={stepNum} className="flex items-center">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-all ${
                     currentStep === stepNum
@@ -640,7 +1115,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                   }`}>
                     {stepNum}
                   </div>
-                  {stepNum < 3 && (
+                  {stepNum < 2 && (
                     <div className={`w-12 h-0.5 mx-1 transition-colors ${currentStep > stepNum ? 'bg-blue-500' : 'bg-slate-100 dark:bg-slate-800'}`} />
                   )}
                 </div>
@@ -648,14 +1123,13 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
             </div>
 
             {/* Form Step flow */}
-            <form onSubmit={handleSaveItem} className="space-y-5">
+            <form onSubmit={handleSaveItem} className="space-y-4">
               {formError && (
                 <div className="flex items-center gap-2 p-3.5 bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-300 text-xs font-semibold rounded-2xl border border-rose-105 dark:border-rose-900/30">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{formError}</span>
                 </div>
               )}
-
               {/* STEP 1: Url & Name */}
               {currentStep === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-right-3 duration-100">
@@ -668,7 +1142,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                       type="text"
                       required
                       placeholder="example.com"
-                      value={url}
+                      value={url || ''}
                       onChange={(e) => setUrl(e.target.value)}
                       className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white"
                       autoFocus
@@ -676,7 +1150,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                   </div>
 
                   <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white">
+                    <h4 className="text-sm font-black text-slate-805 dark:text-white">
                       2. What name should we show? *
                     </h4>
                     <p className="text-xs text-slate-400 font-medium">Simple title to recognize it at a glance</p>
@@ -684,7 +1158,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                       type="text"
                       required
                       placeholder="e.g. My Coding Notes"
-                      value={title}
+                      value={title || ''}
                       onChange={(e) => setTitle(e.target.value)}
                       className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-955 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white"
                     />
@@ -692,39 +1166,38 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                 </div>
               )}
 
-              {/* STEP 2: Description & Category */}
+              {/* STEP 2: Description, Category, Notes & Favorites */}
               {currentStep === 2 && (
-                <div className="space-y-4 animate-in slide-in-from-right-3 duration-100">
+                <div className="space-y-4 animate-in slide-in-from-right-3 duration-100 max-h-[50vh] overflow-y-auto pr-1">
                   <div className="space-y-1">
                     <h4 className="text-sm font-black text-slate-800 dark:text-white">
-                      3. What is this website for? *
+                      3. What is this website for? <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-1">Optional</span>
                     </h4>
                     <p className="text-xs text-slate-400 font-medium">Write a simple summary so you remember later</p>
                     <textarea
-                      required
                       rows={2}
-                      placeholder="This has great videos explaining databases and microservices..."
-                      value={description}
+                      placeholder="e.g. This has great videos explaining databases and microservices... (Optional)"
+                      value={description || ''}
                       onChange={(e) => setDescription(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white resize-none"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-505 text-slate-900 dark:text-white resize-none"
                       autoFocus
                     />
                   </div>
 
                   <div className="space-y-1 border-t border-slate-50 dark:border-slate-850 pt-3">
                     <h4 className="text-sm font-black text-slate-805 dark:text-white mb-2">
-                      4. Pick Category Folder
+                       4. Pick Category Folder <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-805 px-1.5 py-0.5 rounded ml-1">Optional</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
                       {categoryOptions.map(cat => (
                         <button
                           key={cat}
                           type="button"
-                          onClick={() => setCategory(cat)}
+                          onClick={() => setCategory(category === cat ? '' : cat)}
                           className={`px-3 py-2 text-xs font-bold rounded-xl border text-center transition-all cursor-pointer ${
                             category === cat
                               ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
-                              : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-350'
+                              : 'bg-white hover:bg-slate-55 border-slate-200 text-slate-600 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-350'
                           }`}
                         >
                           {cat}
@@ -732,26 +1205,20 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                       ))}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* STEP 3: Optional Study Notes & Favorite toggle option */}
-              {currentStep === 3 && (
-                <div className="space-y-4 animate-in slide-in-from-right-3 duration-100">
-                  <div className="space-y-1">
+                  <div className="space-y-1 border-t border-slate-50 dark:border-slate-850 pt-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-black text-slate-805 dark:text-white">
                         5. Add Learning Notes (Optional)
                       </h4>
-                      <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-bold uppercase">Optional</span>
+                      <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-bold uppercase font-sans">Optional</span>
                     </div>
                     <textarea
                       rows={2}
                       placeholder="Add key commands, checklists, passwords, or study codes..."
-                      value={notes}
+                      value={notes || ''}
                       onChange={(e) => setNotes(e.target.value)}
                       className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white resize-none"
-                      autoFocus
                     />
                   </div>
 
@@ -794,7 +1261,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                   <div />
                 )}
 
-                {currentStep < 3 ? (
+                {currentStep < 2 ? (
                   <button
                     type="button"
                     onClick={handleNextStep}

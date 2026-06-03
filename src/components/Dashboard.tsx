@@ -128,6 +128,9 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
               coding: Array.isArray(parsed.coding) ? parsed.coding : [],
               interviews: Array.isArray(parsed.interviews) ? parsed.interviews : [],
               quizzes: Array.isArray(parsed.quizzes) ? parsed.quizzes : [],
+              trackers: Array.isArray(parsed.trackers) ? parsed.trackers : [],
+              vaultItems: Array.isArray(parsed.vaultItems) ? parsed.vaultItems : [],
+              vaultCategories: Array.isArray(parsed.vaultCategories) ? parsed.vaultCategories : [],
             };
             
             // Validate at least some keys are set
@@ -137,7 +140,8 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
             }
             
             onUpdateDb(restored);
-            setSuccessMsg(`Vault imported successfully! Loaded ${restored.topics.length} topics, ${restored.subtopics.length} subtopics, and ${restored.notes.length + restored.pdfs.length + restored.videos.length + restored.quizzes.length} study resource items.`);
+            const totalResources = restored.notes.length + restored.pdfs.length + restored.videos.length + restored.quizzes.length + restored.concepts.length + restored.coding.length + restored.interviews.length;
+            setSuccessMsg(`Vault imported successfully! Loaded ${restored.topics.length} topics, ${restored.subtopics.length} subtopics, ${restored.vaultItems?.length || 0} Knowledge Vault links, ${restored.trackers?.length || 0} trackings, and ${totalResources} study resource items.`);
           } else {
             setErrorMsg("Invalid data structure. The uploaded backup must be a valid CodeXshelf export JSON object.");
           }

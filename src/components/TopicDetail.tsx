@@ -51,7 +51,7 @@ export function TopicDetail({
 
   // Form states for Topic edit
   const [editName, setEditName] = useState(topic.name);
-  const [editDesc, setEditDesc] = useState(topic.description);
+  const [editDesc, setEditDesc] = useState(topic.description || '');
 
   const handleCreateSubtopic = (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,7 +220,7 @@ export function TopicDetail({
                   type="text"
                   required
                   placeholder="e.g. Closures & Scope"
-                  value={subName}
+                  value={subName || ''}
                   onChange={(e) => setSubName(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-202 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                 />
@@ -232,7 +232,7 @@ export function TopicDetail({
                 <textarea
                   rows={2}
                   placeholder="optional"
-                  value={subDesc}
+                  value={subDesc || ''}
                   onChange={(e) => setSubDesc(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-202 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                 />
@@ -274,7 +274,7 @@ export function TopicDetail({
                   type="text"
                   required
                   placeholder="Topic name"
-                  value={editName}
+                  value={editName || ''}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-202 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                 />
@@ -286,7 +286,7 @@ export function TopicDetail({
                 <textarea
                   rows={2}
                   placeholder="Topic summary"
-                  value={editDesc}
+                  value={editDesc || ''}
                   onChange={(e) => setEditDesc(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-202 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                 />
