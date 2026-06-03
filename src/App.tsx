@@ -24,10 +24,25 @@ const LOCAL_STORAGE_USER_KEY = 'codexshelf_active_user_v1';
 const LOCAL_STORAGE_THEME_KEY = 'codexshelf_theme_preference_v1';
 const LOCAL_STORAGE_LAST_SYNCED_KEY = 'codexshelf_last_synced_at_v1';
 
-function mergeItemLists<T extends { id: string; createdAt: string; updatedAt?: string }>(
+import { 
+  Database, 
+  Download, 
+  Upload, 
+  RefreshCw, 
+  Trash2, 
+  X, 
+  ShieldCheck, 
+  AlertTriangle, 
+  HelpCircle,
+  Clock,
+  Cloud,
+  CheckCircle2,
+  HardDrive
+} from 'lucide-react';
+
+function unionMergeLists<T extends { id: string; createdAt?: string; updatedAt?: string }>(
   localList: T[] = [],
-  cloudList: T[] = [],
-  lastSyncedAt: number
+  cloudList: T[] = []
 ): T[] {
   const localMap = new Map(localList.map(item => [item.id, item]));
   const cloudMap = new Map(cloudList.map(item => [item.id, item]));
@@ -50,29 +65,31 @@ function mergeItemLists<T extends { id: string; createdAt: string; updatedAt?: s
     } else if (localItem) {
       merged.push(localItem);
     } else if (cloudItem) {
-      const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
-      if (lastSyncedAt === 0 || cloudTime > lastSyncedAt) {
-        merged.push(cloudItem);
-      }
+      merged.push(cloudItem);
     }
   }
 
-  return merged.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+  // Sort chronologically
+  return merged.sort((a, b) => {
+    const tA = new Date(a.createdAt || 0).getTime();
+    const tB = new Date(b.createdAt || 0).getTime();
+    return tA - tB;
+  });
 }
 
-function mergeDatabaseStates(local: DatabaseState, cloud: DatabaseState, lastSyncedAt: number): DatabaseState {
+function unionMergeDatabaseStates(local: DatabaseState, cloud: DatabaseState): DatabaseState {
   return {
-    topics: mergeItemLists(local.topics || [], cloud.topics || [], lastSyncedAt),
-    subtopics: mergeItemLists(local.subtopics || [], cloud.subtopics || [], lastSyncedAt),
-    pdfs: mergeItemLists(local.pdfs || [], cloud.pdfs || [], lastSyncedAt),
-    notes: mergeItemLists(local.notes || [], cloud.notes || [], lastSyncedAt),
-    videos: mergeItemLists(local.videos || [], cloud.videos || [], lastSyncedAt),
-    concepts: mergeItemLists(local.concepts || [], cloud.concepts || [], lastSyncedAt),
-    coding: mergeItemLists(local.coding || [], cloud.coding || [], lastSyncedAt),
-    interviews: mergeItemLists(local.interviews || [], cloud.interviews || [], lastSyncedAt),
-    quizzes: mergeItemLists(local.quizzes || [], cloud.quizzes || [], lastSyncedAt),
-    trackers: mergeItemLists(local.trackers || [], cloud.trackers || [], lastSyncedAt),
-    vaultItems: mergeItemLists(local.vaultItems || [], cloud.vaultItems || [], lastSyncedAt),
+    topics: unionMergeLists(local.topics || [], cloud.topics || []),
+    subtopics: unionMergeLists(local.subtopics || [], cloud.subtopics || []),
+    pdfs: unionMergeLists(local.pdfs || [], cloud.pdfs || []),
+    notes: unionMergeLists(local.notes || [], cloud.notes || []),
+    videos: unionMergeLists(local.videos || [], cloud.videos || []),
+    concepts: unionMergeLists(local.concepts || [], cloud.concepts || []),
+    coding: unionMergeLists(local.coding || [], cloud.coding || []),
+    interviews: unionMergeLists(local.interviews || [], cloud.interviews || []),
+    quizzes: unionMergeLists(local.quizzes || [], cloud.quizzes || []),
+    trackers: unionMergeLists(local.trackers || [], cloud.trackers || []),
+    vaultItems: unionMergeLists(local.vaultItems || [], cloud.vaultItems || []),
     vaultCategories: Array.from(new Set([
       ...(local.vaultCategories || []),
       ...(cloud.vaultCategories || [])
@@ -129,6 +146,9 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sync Management Modal State
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+
   // Load user session and theme settings on launch
   useEffect(() => {
     // 1. Theme load
@@ -153,137 +173,179 @@ export default function App() {
         console.error("Failed to parse saved user", e);
       }
     }
+
+    // 3. Load DB state from local storage on mount so everything is retained
+    const savedDb = localStorage.getItem(LOCAL_STORAGE_DB_KEY);
+    if (savedDb) {
+      try {
+        const parsed = JSON.parse(savedDb) as DatabaseState;
+        if (parsed && typeof parsed === 'object') {
+          setDbState(parsed);
+        }
+      } catch (e) {
+        console.warn("Failed to load saved local DB");
+      }
+    }
   }, []);
 
-  // Fetch / Sync with cloud database when current user logs in
-  useEffect(() => {
-    if (currentUser.isAuthenticated) {
-      fetchCloudDatabase();
+  // Execute advanced cloud database synchronization operations
+  const executeVaultSyncOperation = async (operationType: 'merge' | 'pull' | 'push' | 'clear') => {
+    if (!currentUser.uid && operationType !== 'clear') {
+      setSyncToast({
+        show: true,
+        status: 'error',
+        message: 'Could not resolve user credentials. Please sign in to sync.'
+      });
+      return;
     }
-  }, [currentUser.isAuthenticated, currentUser.uid]);
 
-  // Read current database from Firestore or fall back to node-express backend
-  const fetchCloudDatabase = async () => {
     setSyncing(true);
     setSyncToast({
       show: true,
       status: 'loading',
-      message: 'Fetching latest changes from study network...'
+      message: operationType === 'merge' ? 'Performing bi-directional merge integrity review...' :
+               operationType === 'pull' ? 'Securely retrieving learning database from cloud...' :
+               operationType === 'push' ? 'Publishing current local schema to cloud servers...' :
+               'Resetting browser database cache memory...'
     });
+
     try {
+      if (operationType === 'clear') {
+        localStorage.removeItem(LOCAL_STORAGE_DB_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_LAST_SYNCED_KEY);
+        setDbState(initialData);
+        setSyncToast({
+          show: true,
+          status: 'success',
+          message: 'Local browser cache wiped clean. Reloaded study baseline.'
+        });
+        setIsSyncModalOpen(false);
+        setSyncing(false);
+        return;
+      }
+
       if (currentUser.uid) {
         const userDocRef = doc(db, 'user_states', currentUser.uid);
-        const docSnap = await getDoc(userDocRef);
-        
-        const lastSyncedAtStr = localStorage.getItem(LOCAL_STORAGE_LAST_SYNCED_KEY);
-        const lastSyncedAt = lastSyncedAtStr ? new Date(lastSyncedAtStr).getTime() : 0;
-        
-        let mergedState: DatabaseState;
-        let isFirstInit = false;
 
-        if (docSnap.exists()) {
-          const cloudData = docSnap.data();
-          if (cloudData && cloudData.state) {
-            // Smart bi-directional merge!
-            mergedState = mergeDatabaseStates(dbState, cloudData.state as DatabaseState, lastSyncedAt);
-          } else {
-            mergedState = dbState;
-          }
-        } else {
-          isFirstInit = true;
-          mergedState = dbState;
-        }
-
-        // Save merged state locally
-        setDbState(mergedState);
-        localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(mergedState));
-
-        const finalSyncTime = new Date().toISOString();
-        // Sync back merged state to cloud so both is in sync
-        await setDoc(userDocRef, {
-          userId: currentUser.uid,
-          state: mergedState,
-          updatedAt: finalSyncTime
-        });
-
-        localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, finalSyncTime);
-        setOfflineMode(false);
-        setSyncing(false);
-
-        // Highlight merges
-        if (isFirstInit) {
+        if (operationType === 'push') {
+          const finalSyncTime = new Date().toISOString();
+          await setDoc(userDocRef, {
+            userId: currentUser.uid,
+            state: dbState,
+            updatedAt: finalSyncTime
+          });
+          localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, finalSyncTime);
+          setOfflineMode(false);
           setSyncToast({
             show: true,
             status: 'success',
-            message: 'First-time online vault initialized successfully!'
+            message: 'Local study work published online. Overwrote server segments.'
           });
-        } else {
+          setIsSyncModalOpen(false);
+          setSyncing(false);
+          return;
+        }
+
+        // Retrieve cloud document for Pull and Merge
+        const docSnap = await getDoc(userDocRef);
+
+        if (operationType === 'pull') {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data && data.state) {
+              const pulledState = data.state as DatabaseState;
+              setDbState(pulledState);
+              localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(pulledState));
+              
+              const nowCheck = new Date().toISOString();
+              localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, nowCheck);
+              setOfflineMode(false);
+
+              const totalCount = 
+                (pulledState.topics?.length || 0) + 
+                (pulledState.pdfs?.length || 0) + 
+                (pulledState.videos?.length || 0) +
+                (pulledState.notes?.length || 0);
+
+              setSyncToast({
+                show: true,
+                status: 'success',
+                message: `Successfully loaded ${totalCount} nodes from secure cloud servers.`
+              });
+            } else {
+              setSyncToast({
+                show: true,
+                status: 'error',
+                message: 'No online data segments located inside database.'
+              });
+            }
+          } else {
+            setSyncToast({
+              show: true,
+              status: 'error',
+              message: 'No online backup files discovered. Publish state to save backup.'
+            });
+          }
+          setIsSyncModalOpen(false);
+          setSyncing(false);
+          return;
+        }
+
+        if (operationType === 'merge') {
+          let mergedState: DatabaseState;
+          if (docSnap.exists()) {
+            const cloudData = docSnap.data();
+            if (cloudData && cloudData.state) {
+              // Bidirectional merge that protects both databases
+              mergedState = unionMergeDatabaseStates(dbState, cloudData.state as DatabaseState);
+            } else {
+              mergedState = dbState;
+            }
+          } else {
+            mergedState = dbState;
+          }
+
+          setDbState(mergedState);
+          localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(mergedState));
+
+          const finalSyncTime = new Date().toISOString();
+          await setDoc(userDocRef, {
+            userId: currentUser.uid,
+            state: mergedState,
+            updatedAt: finalSyncTime
+          });
+          localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, finalSyncTime);
+          setOfflineMode(false);
+
           const pdfDiff = mergedState.pdfs.length - dbState.pdfs.length;
           const noteDiff = mergedState.notes.length - dbState.notes.length;
           const videoDiff = mergedState.videos.length - dbState.videos.length;
-          const trackerDiff = ((mergedState.trackers || []).length) - ((dbState.trackers || []).length);
 
           const parts = [];
           if (pdfDiff > 0) parts.push(`${pdfDiff} PDFs`);
           if (noteDiff > 0) parts.push(`${noteDiff} notes`);
           if (videoDiff > 0) parts.push(`${videoDiff} videos`);
-          if (trackerDiff > 0) parts.push(`${trackerDiff} trackers`);
 
-          const msg = parts.length > 0 
-            ? `Successfully synchronized & merged ${parts.join(', ')} from the cloud!`
-            : 'All topics, PDF workbooks, videos, notes, and progress links are fully up to date!';
+          const msg = parts.length > 0
+            ? `Sync merge successful! Retrieved ${parts.join(', ')} from online system.`
+            : 'Unification completed! All device indices are fully in dynamic alignment.';
 
           setSyncToast({
             show: true,
             status: 'success',
             message: msg
           });
+          setIsSyncModalOpen(false);
+          setSyncing(false);
+          return;
         }
-
-        setTimeout(() => {
-          setSyncToast(prev => ({ ...prev, show: false }));
-        }, 4050);
-        return;
-      }
-
-      // --- Sandbox Simulator Backup API Fallback ---
-      const response = await fetch('/api/data');
-      const resJSON = await response.json();
-      
-      if (resJSON.success && resJSON.data) {
-        setDbState(resJSON.data);
-        localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(resJSON.data));
-        setOfflineMode(false);
-        setSyncToast({
-          show: true,
-          status: 'success',
-          message: 'Local fallback database loaded cleanly.'
-        });
-      } else {
-        const localCopy = localStorage.getItem(LOCAL_STORAGE_DB_KEY);
-        if (localCopy) {
-          setDbState(JSON.parse(localCopy));
-        } else {
-          setDbState(initialData);
-        }
-        setOfflineMode(true);
-        setSyncToast({
-          show: true,
-          status: 'error',
-          message: 'Unable to connect to cloud services. Running in sandbox mode.'
-        });
       }
     } catch (e) {
-      console.warn("Failed to fetch cloud db. Retaining offline mode caches.", e);
-      const localCopy = localStorage.getItem(LOCAL_STORAGE_DB_KEY);
-      if (localCopy) {
-        setDbState(JSON.parse(localCopy));
-      }
-      setOfflineMode(true);
+      console.warn("Failed manual sync flow", e);
       setSyncToast({
         show: true,
         status: 'error',
-        message: 'Network offline. Your changes are safely saved in local cache.'
+        message: 'Could not connect to Firebase sync nodes. Retaining local backup.'
       });
     } finally {
       setSyncing(false);
@@ -293,78 +355,50 @@ export default function App() {
     }
   };
 
-  // Synchronize state down to server (Writes state to Firestore / fallback disk db)
-  const syncToCloud = async (newState: DatabaseState) => {
-    setSyncing(true);
-    setSyncToast({
-      show: true,
-      status: 'loading',
-      message: 'Automative background syncing to network...'
-    });
-    try {
-      if (currentUser.uid) {
-        const userDocRef = doc(db, 'user_states', currentUser.uid);
-        const finalSyncTime = new Date().toISOString();
-        await setDoc(userDocRef, {
-          userId: currentUser.uid,
-          state: newState,
-          updatedAt: finalSyncTime
-        });
-        localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, finalSyncTime);
-        setOfflineMode(false);
-        setSyncing(false);
-        setSyncToast({
-          show: true,
-          status: 'success',
-          message: 'Cloud background check completed successfully.'
-        });
-        setTimeout(() => {
-          setSyncToast(prev => ({ ...prev, show: false }));
-        }, 3000);
-        return;
-      }
-
-      // --- Sandbox Simulator Backup API Fallback ---
-      const response = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newState)
-      });
-      const resJSON = await response.json();
-      if (resJSON.success) {
-        setOfflineMode(false);
-      } else {
-        setOfflineMode(true);
-      }
-    } catch (e) {
-      console.warn("Synchronization batch failed. Client remains in local cache mode.", e);
-      setOfflineMode(true);
-    } finally {
-      setSyncing(false);
-      setTimeout(() => {
-        setSyncToast(prev => ({ ...prev, show: false }));
-      }, 3050);
-    }
-  };
-
-  // Root state updater hook
+  // Root state updater hook - Strict Offline-first local updates (Never auto-sync on edits/presses)
   const handleUpdateDatabase = (updates: Partial<DatabaseState>) => {
     const nextState = { ...dbState, ...updates };
     setDbState(nextState);
     
-    // Save to local
+    // Save to local device storage safely
     localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(nextState));
-
-    // Push cloud sync
-    if (currentUser.isAuthenticated) {
-      syncToCloud(nextState);
-    }
   };
 
   // Handle Authentication callbacks
-  const handleLoginSuccess = (user: CustomUser) => {
+  const handleLoginSuccess = async (user: CustomUser) => {
     setCurrentUser(user);
     localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(user));
+
+    // Quiet first-time login retrieve (only pulls on login action so session begins with cloud state)
+    if (user.uid) {
+      setSyncing(true);
+      try {
+        const userDocRef = doc(db, 'user_states', user.uid);
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          const cloudData = docSnap.data();
+          if (cloudData && cloudData.state) {
+            const nextCloudState = cloudData.state as DatabaseState;
+            setDbState(nextCloudState);
+            localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(nextCloudState));
+            localStorage.setItem(LOCAL_STORAGE_LAST_SYNCED_KEY, new Date().toISOString());
+            setOfflineMode(false);
+            setSyncToast({
+              show: true,
+              status: 'success',
+              message: 'Authorized successfully! Downloaded cloud database.'
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Silent login pull skipped", e);
+      } finally {
+        setSyncing(false);
+        setTimeout(() => {
+          setSyncToast(prev => ({ ...prev, show: false }));
+        }, 4000);
+      }
+    }
   };
 
   const handleLogout = async () => {
@@ -660,7 +694,7 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleTheme={handleToggleTheme}
         syncing={syncing}
-        onManualSync={fetchCloudDatabase}
+        onManualSync={() => setIsSyncModalOpen(true)}
         offlineMode={offlineMode}
       />
 
@@ -670,6 +704,156 @@ export default function App() {
           {renderWorkspace()}
         </div>
       </main>
+
+      {/* Sync Control Dial-In Center Modal */}
+      {isSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            onClick={() => setIsSyncModalOpen(false)} 
+            className="absolute inset-0 bg-slate-900/60 dark:bg-black/85 backdrop-blur-xs transition-opacity" 
+          />
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in-95 duration-150 overflow-y-auto max-h-[90vh]">
+            <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-800/50 mb-6 font-sans">
+              <div>
+                <h3 className="font-sans font-bold text-lg md:text-xl text-slate-900 dark:text-white flex items-center gap-2">
+                  <Cloud className="w-5.5 h-5.5 text-blue-550 dark:text-blue-400 animate-pulse" />
+                  Cloud Sync Center & Cache Hub
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Synchronize study topics, workbook PDFs, quizzes, notes, and activity logs across your devices securely.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsSyncModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Current Sync Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="bg-slate-50/75 dark:bg-slate-950/40 p-4 rounded-2xl flex items-center gap-3 border border-slate-150 dark:border-slate-800/60">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Database className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Indexed Work</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {dbState.topics?.length || 0} Topics • {dbState.pdfs?.length || 0} PDFs • {dbState.notes?.length || 0} Notes
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50/75 dark:bg-slate-950/40 p-4 rounded-2xl flex items-center gap-3 border border-slate-150 dark:border-slate-800/60">
+                <div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+                  <Clock className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Last Check-in</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {localStorage.getItem(LOCAL_STORAGE_LAST_SYNCED_KEY) 
+                      ? new Date(localStorage.getItem(LOCAL_STORAGE_LAST_SYNCED_KEY)!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) 
+                      : 'Never Sync Checked'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning segment if companion sync stale */}
+            <div className="p-4 bg-amber-500/5 border border-amber-500/20 text-amber-600 dark:text-amber-450 rounded-2xl flex items-start gap-3 text-xs mb-6 leading-relaxed">
+              <AlertTriangle className="w-4.5 h-4.5 shrink-0 mt-0.5 text-amber-500" />
+              <div>
+                <span className="font-bold">Multi-device safety reminder:</span> Opening a tablet or companion device with older local storage can contaminate your data if auto-merged. Use <span className="font-bold text-blue-600 dark:text-blue-400">Force Pull Cloud</span> first on secondary devices to download your pristine data cleanly.
+              </div>
+            </div>
+
+            {/* Sync actions cards list */}
+            <div className="space-y-4 font-sans">
+              {/* Card 1: Pull Cloud */}
+              <button
+                onClick={() => executeVaultSyncOperation('pull')}
+                disabled={syncing}
+                className="w-full text-left p-4 rounded-2xl border border-blue-100 hover:border-blue-400/50 dark:border-slate-800 dark:hover:border-blue-500/30 bg-blue-500/[0.02] hover:bg-blue-500/[0.04] transition-all flex items-center gap-4 cursor-pointer hover:-translate-y-0.5 duration-150 group disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-550/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Force Pull Cloud Data</p>
+                    <span className="text-[9px] uppercase font-bold text-blue-500 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">SAFEST ON TABLET</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    Completely replace your tablet's local browser memory with the pristine backup on the cloud. Eliminates stale local caches.
+                  </p>
+                </div>
+              </button>
+
+              {/* Card 2: Run Bidirectional Merge */}
+              <button
+                onClick={() => executeVaultSyncOperation('merge')}
+                disabled={syncing}
+                className="w-full text-left p-4 rounded-2xl border border-violet-100 hover:border-violet-400/50 dark:border-slate-800 dark:hover:border-violet-500/30 bg-violet-500/[0.01]/[0.01] hover:bg-violet-500/[0.03] transition-all flex items-center gap-4 cursor-pointer hover:-translate-y-0.5 duration-150 group disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Smart Bidirectional Merge</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    Combines local cache files and cloud segments together. Ideal when multiple devices have unique new links added offline. Keeps everything!
+                  </p>
+                </div>
+              </button>
+
+              {/* Card 3: Push Local */}
+              <button
+                onClick={() => executeVaultSyncOperation('push')}
+                disabled={syncing}
+                className="w-full text-left p-4 rounded-2xl border border-emerald-100 hover:border-emerald-400/50 dark:border-slate-800 dark:hover:border-emerald-500/30 bg-emerald-500/[0.01]/[0.02] hover:bg-emerald-500/[0.04] transition-all flex items-center gap-4 cursor-pointer hover:-translate-y-0.5 duration-150 group disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-550/10 text-emerald-600 dark:text-emerald-450 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Force Push Device State</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    Overwrites your online cloud database using this device's current memory. Ensures your current device state becomes the global master.
+                  </p>
+                </div>
+              </button>
+
+              {/* Card 4: Clear Device Cache */}
+              <button
+                onClick={() => executeVaultSyncOperation('clear')}
+                disabled={syncing}
+                className="w-full text-left p-4 rounded-2xl border border-rose-100 hover:border-rose-400/50 dark:border-slate-800 dark:hover:border-rose-500/30 bg-rose-500/[0.01]/[0.02] hover:bg-rose-500/[0.05] transition-all flex items-center gap-4 cursor-pointer hover:-translate-y-0.5 duration-150 group disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-605 dark:text-rose-400 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Reset Local Device Cache</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    Wipes local browser storage clean and resets workspace to default template. Discharges caches safely. (Does not touch your cloud data).
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-8 pt-4 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-350 dark:hover:bg-slate-755 transition-colors cursor-pointer"
+              >
+                Close Panel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. Professional Top-Right Sync Toast Banner */}
       {syncToast.show && (
