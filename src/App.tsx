@@ -15,6 +15,9 @@ import { AllPdfsView } from './components/AllPdfsView';
 import { KnowledgeVaultView } from './components/KnowledgeVaultView';
 import { Topic, Subtopic, DatabaseState, CustomUser } from './types';
 import { initialData } from './initialData';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const LOCAL_STORAGE_DB_KEY = 'codexshelf_database_state_v1';
 const LOCAL_STORAGE_USER_KEY = 'codexshelf_active_user_v1';
@@ -45,6 +48,25 @@ export default function App() {
   // Or: 'topicId::subtopicId' (e.g. 'javascript::closures')
   const [activeView, setActiveView] = useState<string>('dashboard');
 
+  // Monitor Firebase Auth session state change
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const loggedUser = {
+          email: user.email || '',
+          name: user.displayName || 'Rish',
+          picture: user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user.displayName || 'Rish')}`,
+          isAuthenticated: true,
+          uid: user.uid
+        };
+        setCurrentUser(loggedUser);
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(loggedUser));
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Load user session and theme settings on launch
   useEffect(() => {
     // 1. Theme load
@@ -57,7 +79,7 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
 
-    // 2. Authentication load
+    // 2. Authentication load (sandbox fallback default check)
     const savedUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
     if (savedUser) {
       try {
@@ -76,12 +98,38 @@ export default function App() {
     if (currentUser.isAuthenticated) {
       fetchCloudDatabase();
     }
-  }, [currentUser.isAuthenticated]);
+  }, [currentUser.isAuthenticated, currentUser.uid]);
 
-  // Read current database from node-express backend
+  // Read current database from Firestore or fall back to node-express backend
   const fetchCloudDatabase = async () => {
     setSyncing(true);
     try {
+      if (currentUser.uid) {
+        const userDocRef = doc(db, 'user_states', currentUser.uid);
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          const cloudData = docSnap.data();
+          if (cloudData && cloudData.state) {
+            setDbState(cloudData.state);
+            localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(cloudData.state));
+            setOfflineMode(false);
+            setSyncing(false);
+            return;
+          }
+        } else {
+          // No cloud document found for this user yet - write local default base to cloud
+          await setDoc(userDocRef, {
+            userId: currentUser.uid,
+            state: dbState,
+            updatedAt: new Date().toISOString()
+          });
+          setOfflineMode(false);
+          setSyncing(false);
+          return;
+        }
+      }
+
+      // --- Sandbox Simulator Backup API Fallback ---
       const response = await fetch('/api/data');
       const resJSON = await response.json();
       
@@ -113,10 +161,23 @@ export default function App() {
     }
   };
 
-  // Synchronize state down to server (Writes state to disk/db)
+  // Synchronize state down to server (Writes state to Firestore / fallback disk db)
   const syncToCloud = async (newState: DatabaseState) => {
     setSyncing(true);
     try {
+      if (currentUser.uid) {
+        const userDocRef = doc(db, 'user_states', currentUser.uid);
+        await setDoc(userDocRef, {
+          userId: currentUser.uid,
+          state: newState,
+          updatedAt: new Date().toISOString()
+        });
+        setOfflineMode(false);
+        setSyncing(false);
+        return;
+      }
+
+      // --- Sandbox Simulator Backup API Fallback ---
       const response = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,7 +217,12 @@ export default function App() {
     localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(user));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn("Failed to sign out Firebase user:", e);
+    }
     const emptyUser: CustomUser = {
       email: '',
       name: '',

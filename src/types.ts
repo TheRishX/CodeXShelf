@@ -130,4 +130,5 @@ export interface CustomUser {
   name: string;
   picture?: string;
   isAuthenticated: boolean;
+  uid?: string;
 }

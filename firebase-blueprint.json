@@ -1,0 +1,34 @@
+{
+  "entities": {
+    "UserState": {
+      "title": "UserState",
+      "description": "The dynamic synchronized database state of the user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner userId of this state"
+        },
+        "state": {
+          "type": "object",
+          "description": "Entire structured CodexShelf database state including topics, subtopics, notes, and items"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when this database state was saved"
+        }
+      },
+      "required": [
+        "userId",
+        "state",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/user_states/{userId}": {
+      "schema": "UserState",
+      "description": "User specific database states"
+    }
+  }
+}
