@@ -72,7 +72,7 @@ export function AuthModal({ onLoginSuccess, userEmail = "therishx@gmail.com" }: 
             <Sparkles className="w-7 h-7" />
           </div>
           <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900 dark:text-white">
-            CodeXShelf
+            CodeXshelf
           </h1>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-mono uppercase tracking-widest font-bold">
             ONLINE CODING VAULT

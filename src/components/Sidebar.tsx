@@ -105,7 +105,7 @@ export function Sidebar({
           </div>
           <div>
             <h1 className="font-bold text-slate-850 dark:text-white text-base leading-none font-sans">
-              CodeXShelf
+              CodeXshelf
             </h1>
             <span className="text-[10px] font-mono tracking-wider text-slate-400">YOUR LEARNING VAULT</span>
           </div>
@@ -139,7 +139,7 @@ export function Sidebar({
             </div>
             <div>
               <h1 className="font-bold text-slate-800 dark:text-white text-lg leading-none font-sans tracking-tight">
-                CodeXShelf
+                CodeXshelf
               </h1>
               <span className="text-[9px] font-mono tracking-wider text-slate-400 block mt-1">YOUR LEARNING VAULT</span>
             </div>

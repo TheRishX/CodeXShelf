@@ -139,7 +139,7 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
             onUpdateDb(restored);
             setSuccessMsg(`Vault imported successfully! Loaded ${restored.topics.length} topics, ${restored.subtopics.length} subtopics, and ${restored.notes.length + restored.pdfs.length + restored.videos.length + restored.quizzes.length} study resource items.`);
           } else {
-            setErrorMsg("Invalid data structure. The uploaded backup must be a valid CodeXShelf export JSON object.");
+            setErrorMsg("Invalid data structure. The uploaded backup must be a valid CodeXshelf export JSON object.");
           }
         } catch (err) {
           console.error(err);

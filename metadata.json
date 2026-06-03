@@ -1,6 +1,6 @@
 {
-  "name": "CodeXShelf",
-  "description": "One-stop organized shelf for student notes, resources, videos, and AI study generators with dual mode support.",
+  "name": "CodeXshelf",
+  "description": "Online digital vault for tracking study topics, learning roadmaps, notes, resource files, and interactive code quizzes with real-time sync support.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
