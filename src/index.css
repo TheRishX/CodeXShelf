@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@450;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, svelte-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+
+  /* Re-route blue, indigo, violet, and purple to magnificent custom olive greens and organic tones */
+  --color-blue-50: #f4f6f0;
+  --color-blue-100: #e6ebda;
+  --color-blue-200: #cfd8ba;
+  --color-blue-300: #abbc88;
+  --color-blue-400: #889f5f;
+  --color-blue-500: #6b8243; /* Rich Olive */
+  --color-blue-600: #556b2f; /* OliveDrab Accent */
+  --color-blue-700: #425225;
+  --color-blue-800: #2d3719;
+  --color-blue-900: #1b210f;
+  --color-blue-950: #0e1108;
+
+  --color-indigo-50: #f5f6e8;
+  --color-indigo-100: #e8ebcc;
+  --color-indigo-200: #cfd69b;
+  --color-indigo-300: #abb76b;
+  --color-indigo-400: #8b994d;
+  --color-indigo-500: #6e7a37;
+  --color-indigo-600: #545f26;
+  --color-indigo-700: #3b451c;
+  --color-indigo-800: #252f11;
+  --color-indigo-900: #141b09;
+  --color-indigo-950: #0a0d04;
+
+  --color-violet-50: #f8f7eb;
+  --color-violet-100: #eeebcf;
+  --color-violet-200: #ddd7a2;
+  --color-violet-300: #c1b670;
+  --color-violet-400: #a4974d;
+  --color-violet-500: #877a37;
+  --color-violet-600: #6c6027;
+  --color-violet-750: #50471b;
+  --color-violet-800: #3a3311;
+  --color-violet-900: #242008;
+  --color-violet-950: #121004;
+
+  --color-purple-50: #f9f8ee;
+  --color-purple-100: #f1ebd5;
+  --color-purple-200: #e2d7ac;
+  --color-purple-350: #c5b67b;
+  --color-purple-400: #a9995c;
+  --color-purple-500: #8d7d42;
+  --color-purple-600: #716331;
+  --color-purple-700: #564c22;
+  --color-purple-800: #3a3314;
+  --color-purple-900: #201c08;
+  --color-purple-950: #0f0d03;
+
+  /* Redefine gray/slate scales to look natural earthy/black in dark mode */
+  --color-slate-950: #050604; /* Darkest organic black */
+  --color-slate-900: #0a0c08; /* Dark pine black */
+  --color-slate-850: #12150f;
+  --color-slate-800: #1a1e15;
+  --color-slate-100: #f1f3ee;
+  --color-slate-50: #f7f8f5;
+
+  --color-gray-950: #000000; /* Pure black */
+  --color-gray-900: #050604;
+}
+
+@variant dark (&:where(.dark, .dark *));
+
+body {
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}

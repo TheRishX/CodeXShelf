@@ -1,0 +1,6 @@
+{
+  "name": "CodeXShelf",
+  "description": "One-stop organized shelf for student notes, resources, videos, and AI study generators with dual mode support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

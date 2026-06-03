@@ -1,0 +1,298 @@
+import express from "express";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { GoogleGenAI, Type } from "@google/genai";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Resolve paths for ES Module environment
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Port and host specifications
+const PORT = 3000;
+const app = express();
+
+app.use(express.json({ limit: '10mb' }));
+
+// Set up server-side storage path
+const STORE_PATH = path.join(process.cwd(), "data-store.json");
+
+// Helper: load store
+function loadStore() {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      const content = fs.readFileSync(STORE_PATH, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.error("Error reading store from data-store.json:", error);
+  }
+  return null;
+}
+
+// Helper: save store
+function saveStore(data: any) {
+  try {
+    fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    return true;
+  } catch (error) {
+    console.error("Error writing store to data-store.json:", error);
+    return false;
+  }
+}
+
+// Initialize Gemini Client
+const apiKey = process.env.GEMINI_API_KEY;
+let ai: GoogleGenAI | null = null;
+if (apiKey) {
+  ai = new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+} else {
+  console.warn("GEMINI_API_KEY is not defined in environment variables. AI operations will fail-fast.");
+}
+
+// REST API Endpoints
+
+// 0. Health checks for container orchestration and rollout validation
+app.get("/api/health", (req, res) => {
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// 1. Get current store state
+app.get("/api/data", (req, res) => {
+  const store = loadStore();
+  if (store) {
+    res.json({ success: true, data: store });
+  } else {
+    res.json({ success: false, message: "No stored data found" });
+  }
+});
+
+// 2. Save/Sync store state
+app.post("/api/data", (req, res) => {
+  const data = req.body;
+  if (!data) {
+    return res.status(400).json({ success: false, error: "Empty state provided" });
+  }
+  const result = saveStore(data);
+  if (result) {
+    res.json({ success: true, message: "Data synced successfully to cloud storage" });
+  } else {
+    res.status(500).json({ success: false, error: "Failed to persist database state" });
+  }
+});
+
+// 3. Gemini Prompt Generator endpoint
+app.post("/api/gemini/generate", async (req, res) => {
+  const { type: rawType, topicName, subtopicName, context } = req.body;
+
+  if (!ai) {
+    return res.status(503).json({
+      success: false,
+      error: "Gemini AI client is not configured. Please add your GEMINI_API_KEY in Settings."
+    });
+  }
+
+  if (!rawType || !topicName || !subtopicName) {
+    return res.status(400).json({ success: false, error: "Missing required parameters (type, topicName, subtopicName)" });
+  }
+
+  let type = rawType;
+  if (type === "concepts") type = "concept";
+  if (type === "interviews") type = "interview";
+  if (type === "quizzes") type = "quiz";
+  if (type === "trackers") type = "tracker";
+
+  try {
+    let prompt = "";
+    let schema: any = null;
+
+    if (type === "notes") {
+      prompt = `You are a professional senior compiler engineer/web educator. Write a highly detailed, extremely elegant, production-focused Markdown study note for the subtopic "${subtopicName}" under the larger category "${topicName}". 
+Include:
+- High level overview
+- Complete, functional, beautifully styled syntax code code blocks
+- Interactive code scenario (e.g. debugging scenarios, MERN integrations, optimization notes).
+Keep the formatting strictly clean and readable with bold key parameters. Avoid verbose introductions, jump straight into the notes.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+
+      return res.json({ success: true, result: response.text });
+    }
+
+    if (type === "interview") {
+      prompt = `Generate a realistic and highly technical Web Developer core interview Question and Answer (Q&A) pair for the subtopic "${subtopicName}" (Topic: "${topicName}").
+Avoid dry or generic summaries. Craft deep senior-level insight with complete code examples if applicable.`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          question: { type: Type.STRING, description: "A realistic developer interview question." },
+          answer: { type: Type.STRING, description: "Detailed, complete answer with code snippets in markdown." },
+          level: { type: Type.STRING, description: "Interview seniority level (junior, mid, senior)." }
+        },
+        required: ["question", "answer", "level"]
+      };
+    } else if (type === "quiz") {
+      prompt = `Generate an engaging multiple-choice code questions about "${subtopicName}" (Topic: "${topicName}"). Make the question tricky (e.g. related to closure variables, closures in loops, React batching triggers).`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          question: { type: Type.STRING, description: "The multiple choice question. It should test actual edge cases." },
+          options: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Exactly 4 options to choose from."
+          },
+          correctIndex: { type: Type.INTEGER, description: "0-indexed position of the correct answer." },
+          explanation: { type: Type.STRING, description: "Detailed structural explanation of the underlying runtime mechanics." }
+        },
+        required: ["question", "options", "correctIndex", "explanation"]
+      };
+    } else if (type === "concept") {
+      prompt = `Generate a modern, highly focused syntax concept snippet or layout pattern for the subtopic "${subtopicName}" (Topic: "${topicName}"). Outline a clean practical scenario.`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Clear descriptive concept name." },
+          content: { type: Type.STRING, description: "Concept summary, explain why it works." },
+          codeSnippet: { type: Type.STRING, description: "A highly-polished complete code block." }
+        },
+        required: ["title", "content"]
+      };
+    } else if (type === "coding") {
+      prompt = `Generate a practical hands-on coding challenge or layout exercise for the subtopic "${subtopicName}" (Topic: "${topicName}").`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Name of the problem." },
+          difficulty: { type: Type.STRING, description: "Problem difficulty: easy, medium, hard." },
+          problemStatement: { type: Type.STRING, description: "Clear, engaging problem description and instruction guides in markdown." },
+          starterCode: { type: Type.STRING, description: "Initial setup code pattern or skeletal layout function." },
+          solution: { type: Type.STRING, description: "Complete functional reference solution code for validation checks." }
+        },
+        required: ["title", "difficulty", "problemStatement", "solution"]
+      };
+    } else if (type === "flashcards") {
+      prompt = `Generate a set of 5 highly helpful study flashcards for "${subtopicName}" (Topic: "${topicName}"). Each flashcard should have a clear concise front (question or term) and back (answer, explanation, or key takeaways with syntax examples).`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          flashcards: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                front: { type: Type.STRING, description: "A study question or key technical term." },
+                back: { type: Type.STRING, description: "Clear definition, brief code snippet, or explanation." }
+              },
+              required: ["front", "back"]
+            }
+          }
+        },
+        required: ["flashcards"]
+      };
+    } else if (type === "roadmap") {
+      prompt = `Generate a highly practical 4-step roadmap to master the concept "${subtopicName}" (Topic: "${topicName}"). Provide clear titles, estimated learning timeframe, core focus details, and 3 actionable checkable tasks for each milestone.`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          steps: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                stepNum: { type: Type.INTEGER, description: "Step number from 1 to 4." },
+                title: { type: Type.STRING, description: "Milestone focus title." },
+                timeframe: { type: Type.STRING, description: "Estimated timeframe, e.g. 2 hours, 1 day." },
+                focus: { type: Type.STRING, description: "Core description of what to master." },
+                tasks: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "3 highly actionable tasks to check off."
+                }
+              },
+              required: ["stepNum", "title", "timeframe", "focus", "tasks"]
+            }
+          }
+        },
+        required: ["steps"]
+      };
+    } else if (type === "tracker") {
+      prompt = `Generate 1 crucial, high-yield interview topic or architectural scenario for the subtopic "${subtopicName}" (Topic: "${topicName}") that developers frequently get asked or fail at in FAANG/high-growth start-up interviews.`;
+      
+      schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "A concise 10-15 word description of the interview topic/scenario (e.g., 'Debounce with trailing & leading edge configuration under heavy mousemove event bursts')." },
+          notes: { type: Type.STRING, description: "A brief practical tip or hint for revision (e.g., 'Remember the difference between setTimeout id clearing and microtask scheduling')." }
+        },
+        required: ["title", "notes"]
+      };
+    } else {
+      return res.status(400).json({ success: false, error: "Invalid type specified" });
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema
+      }
+    });
+
+    const textResult = response.text || "{}";
+    const parsed = JSON.parse(textResult.trim());
+    res.json({ success: true, result: parsed });
+
+  } catch (error: any) {
+    console.error("Gemini Generation Error:", error);
+    res.status(500).json({ success: false, error: error.message || "Internal generation failure" });
+  }
+});
+
+// Serve frontend assets in production or mount Vite middleware in development
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`CodeXShelf server running successfully on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();

@@ -1,0 +1,3084 @@
+import React, { useState } from 'react';
+import { 
+  ArrowLeft, FileText, FileCode, Play, Lightbulb, Code2, HelpCircle, 
+  Sparkles, Plus, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Link, 
+  AlertCircle, Download, Upload, Copy, Check, Eye, Edit3, BookOpen, Map, User, RefreshCw,
+  ClipboardList
+} from 'lucide-react';
+import { 
+  Subtopic, Topic, PdfItem, NoteItem, VideoItem, ConceptItem, CodingItem, 
+  InterviewItem, QuizItem, DatabaseState, TrackerItem
+} from '../types';
+
+interface SubtopicViewProps {
+  topic: Topic;
+  subtopic: Subtopic;
+  dbState: DatabaseState;
+  onBack: () => void;
+  onUpdateDb: (updates: Partial<DatabaseState>) => void;
+  isDarkMode?: boolean;
+  onToggleTheme?: () => void;
+  onDeleteSubtopic?: (subtopicId: string) => void;
+}
+
+type TabType = 'dashboard' | 'tracker' | 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes';
+
+interface TabItem {
+  id: TabType;
+  label: string;
+  icon: any;
+}
+
+const TABS: TabItem[] = [
+  { id: 'tracker', label: 'Topics Tracker', icon: ClipboardList },
+  { id: 'pdfs', label: 'PDFs', icon: FileText },
+  { id: 'notes', label: 'Notes', icon: FileCode },
+  { id: 'videos', label: 'Videos', icon: Play },
+  { id: 'concepts', label: 'Concepts', icon: Lightbulb },
+  { id: 'coding', label: 'Coding', icon: Code2 },
+  { id: 'interviews', label: 'Interview', icon: HelpCircle },
+  { id: 'dashboard', label: 'Study Station', icon: Sparkles }
+];
+
+// Helper: Custom Inline Markdown formatting
+function renderInlineFormat(text: string) {
+  if (!text) return '';
+  if (!text.includes('**') && !text.includes('`')) {
+    return text;
+  }
+  const chunks = text.split(/(\*\*.*?\*\*|`.*?`)/);
+  return chunks.map((chunk, cidx) => {
+    if (chunk.startsWith('**') && chunk.endsWith('**')) {
+      return (
+        <strong key={cidx} className="font-bold text-slate-905 dark:text-white">
+          {chunk.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (chunk.startsWith('`') && chunk.endsWith('`')) {
+      return (
+        <code
+          key={cidx}
+          className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-mono text-xs rounded border border-slate-200 dark:border-slate-700 font-semibold"
+        >
+          {chunk.slice(1, -1)}
+        </code>
+      );
+    }
+    return chunk;
+  });
+}
+
+// Helper: Custom Markdown-to-HTML formatter to render styling beautifully
+function renderSimpleMarkdown(text: string, customParagraphClass?: string) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  let inCodeBlock = false;
+  let codeLines: string[] = [];
+
+  return lines.map((line, idx) => {
+    // Code block toggles
+    if (line.trim().startsWith('```')) {
+      if (inCodeBlock) {
+        inCodeBlock = false;
+        const currentCode = codeLines.join('\n');
+        codeLines = [];
+        return (
+          <pre key={idx} className="my-3 p-4 bg-gray-950 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto relative group border border-gray-800">
+            <button 
+              onClick={() => navigator.clipboard.writeText(currentCode)}
+              className="absolute top-2.5 right-2.5 p-1 rounded bg-gray-800/80 hover:bg-gray-750 opacity-0 group-hover:opacity-100 transition-opacity text-white"
+              title="Copy code"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            <code>{currentCode}</code>
+          </pre>
+        );
+      } else {
+        inCodeBlock = true;
+        return null;
+      }
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      return null;
+    }
+
+    // Header 3
+    if (line.startsWith('### ')) {
+      return <h4 key={idx} className="text-base font-bold text-gray-900 dark:text-white mt-4 mb-2 font-sans">{line.slice(4)}</h4>;
+    }
+    // Header 2
+    if (line.startsWith('## ')) {
+      return <h3 key={idx} className="text-lg font-extrabold text-gray-950 dark:text-white mt-5 mb-2.5 font-sans pb-1 border-b border-gray-100 dark:border-gray-800">{line.slice(3)}</h3>;
+    }
+    // Header 1
+    if (line.startsWith('# ')) {
+      return <h2 key={idx} className="text-xl font-extrabold text-gray-950 dark:text-white mt-6 mb-3 font-sans pb-1.5 border-b border-gray-150 dark:border-gray-800">{line.slice(2)}</h2>;
+    }
+    // Lists selectors
+    if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+      return (
+        <ul key={idx} className="list-disc pl-5 my-1.5 space-y-1 text-sm text-gray-650 dark:text-gray-300">
+          <li>{renderInlineFormat(line.trim().slice(2))}</li>
+        </ul>
+      );
+    }
+    // Numbered lists
+    const numMatch = line.trim().match(/^(\d+)\.\s(.*)/);
+    if (numMatch) {
+      const startNum = parseInt(numMatch[1], 10);
+      return (
+        <ol key={idx} start={startNum} className="list-decimal pl-5 my-1.5 space-y-1 text-sm text-gray-650 dark:text-gray-300">
+          <li>{renderInlineFormat(numMatch[2])}</li>
+        </ol>
+      );
+    }
+    // Blockquotes
+    if (line.trim().startsWith('> ')) {
+      return (
+        <blockquote key={idx} className="border-l-4 border-blue-600 bg-blue-500/5 px-4 py-2 my-2 rounded-r-lg text-xs font-mono text-slate-600 dark:text-slate-400">
+          {line.trim().slice(2)}
+        </blockquote>
+      );
+    }
+
+    // Standard inline replacements (Bold wrappers)
+    const boldRegex = /\*\*(.*?)\*\*/g;
+    const codeSpanRegex = /`(.*?)`/g;
+    
+    // Quick inline scan fallback
+    if (line.includes('**') || line.includes('`')) {
+      // Simple parse formatting mapping:
+      const chunks = line.split(/(\*\*.*?\*\*|`.*?`)/);
+      const elements = chunks.map((chunk, cidx) => {
+        if (chunk.startsWith('**') && chunk.endsWith('**')) {
+          return <strong key={cidx} className="font-bold text-slate-905 dark:text-white">{chunk.slice(2, -2)}</strong>;
+        }
+        if (chunk.startsWith('`') && chunk.endsWith('`')) {
+          return <code key={cidx} className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-mono text-xs rounded border border-slate-205 dark:border-slate-705 font-semibold">{chunk.slice(1, -1)}</code>;
+        }
+        return chunk;
+      });
+      return <p key={idx} className={customParagraphClass || "text-sm text-slate-655 dark:text-slate-300 leading-relaxed my-2"}>{elements}</p>;
+    }
+
+    if (line.trim() === '') {
+      return <div key={idx} className="h-2" />;
+    }
+
+    return <p key={idx} className={customParagraphClass || "text-sm text-gray-610 dark:text-gray-300 leading-relaxed my-2"}>{line}</p>;
+  });
+}
+
+export function SubtopicView({ 
+  topic, 
+  subtopic, 
+  dbState, 
+  onBack, 
+  onUpdateDb,
+  isDarkMode = true,
+  onToggleTheme,
+  onDeleteSubtopic
+}: SubtopicViewProps) {
+  const [activeTab, setActiveTab] = useState<TabType>('pdfs');
+  
+  // Sizing and sync headers states
+  const [textSize, setTextSize] = useState<'A-' | 'A' | 'A+'>('A-');
+  
+  // Subtopic Modifiers & Deletion state
+  const [editSubModalOpen, setEditSubModalOpen] = useState(false);
+  const [editSubName, setEditSubName] = useState(subtopic.name);
+  const [editSubDesc, setEditSubDesc] = useState(subtopic.description || '');
+  const [deleteSubConfirmOpen, setDeleteSubConfirmOpen] = useState(false);
+
+  // Core concepts sidepanel states
+  const [addConceptOpen, setAddConceptOpen] = useState(false);
+  const [newConceptVal, setNewConceptVal] = useState('');
+
+  // Study Assistant loading and model states
+  const [currentInteraction, setCurrentInteraction] = useState<'test' | 'cards' | 'roadmap' | 'summary' | 'faang' | 'coding' | null>(null);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantData, setAssistantData] = useState<any>(null);
+  const [assistantError, setAssistantError] = useState('');
+
+  // Flashcards state
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
+
+  // Quiz state
+  const [selectedQuizOption, setSelectedQuizOption] = useState<number | null>(null);
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
+
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState('');
+  const [aiError, setAiError] = useState('');
+
+  // Modals visibility toggles
+  const [modalOpen, setModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes';
+    title: string;
+  } | null>(null);
+
+  // Form input fields
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualContent, setManualContent] = useState('');
+  const [manualUrl, setManualUrl] = useState('');
+  const [manualOption, setManualOption] = useState<string[]>(['', '', '', '']);
+  const [quizCorrectIndex, setQuizCorrectIndex] = useState(0);
+  const [quizExpl, setQuizExpl] = useState('');
+  const [codingDiff, setCodingDiff] = useState<'easy' | 'medium' | 'hard'>('easy');
+  const [codingProblem, setCodingProblem] = useState('');
+  const [codingStarter, setCodingStarter] = useState('');
+  const [codingSol, setCodingSol] = useState('');
+
+  // Simulated PDF Dropzone state
+  const [pdfFileName, setPdfFileName] = useState('');
+  const [pdfFileSize, setPdfFileSize] = useState('');
+  const [pdfSourceType, setPdfSourceType] = useState<'file' | 'url'>('file');
+  const [pdfFileData, setPdfFileData] = useState<string>('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Interactive Quiz State metrics
+  const [quizAttempts, setQuizAttempts] = useState<{ [quizId: string]: number }>({}); // maps quizId -> selected choice index
+  const [revealSolutions, setRevealSolutions] = useState<{ [itemId: string]: boolean }>({});
+  const [copiedItem, setCopiedItem] = useState<string | null>(null);
+
+  // Topics tracker input states
+  const [newTrackerTitle, setNewTrackerTitle] = useState('');
+
+  // General Edit Item states
+  const [editingItem, setEditingItem] = useState<{
+    id: string;
+    field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes' | 'trackers';
+  } | null>(null);
+
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [editDifficulty, setEditDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
+  const [editCodeSnippet, setEditCodeSnippet] = useState('');
+  const [editStarterCode, setEditStarterCode] = useState('');
+  const [editSolution, setEditSolution] = useState('');
+  const [editOptions, setEditOptions] = useState<string[]>(['', '', '', '']);
+  const [editCorrectIndex, setEditCorrectIndex] = useState(0);
+  const [editExplanation, setEditExplanation] = useState('');
+  const [editTrackerStarted, setEditTrackerStarted] = useState(false);
+  const [editTrackerCompleted, setEditTrackerCompleted] = useState(false);
+  const [editTrackerRevised, setEditTrackerRevised] = useState(false);
+  const [editTrackerNotes, setEditTrackerNotes] = useState('');
+
+  const handleStartEdit = (item: any, field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes' | 'trackers') => {
+    setEditingItem({ id: item.id, field });
+    setEditTitle(item.title || item.question || '');
+    setEditContent(item.content || item.answer || '');
+    setEditUrl(item.url || '');
+    setEditDifficulty(item.difficulty || item.level || 'easy');
+    setEditCodeSnippet(item.codeSnippet || '');
+    setEditStarterCode(item.starterCode || '');
+    setEditSolution(item.solution || '');
+    setEditOptions(item.options ? [...item.options] : ['', '', '', '']);
+    setEditCorrectIndex(item.correctIndex || 0);
+    setEditExplanation(item.explanation || '');
+    setEditTrackerStarted(item.started || false);
+    setEditTrackerCompleted(item.completed || false);
+    setEditTrackerRevised(item.revised || false);
+    setEditTrackerNotes(item.notes || '');
+  };
+
+  const handleSaveEditItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    const { id, field } = editingItem;
+    const array = (dbState[field as keyof DatabaseState] as any[]) || [];
+
+    const updatedArray = array.map(item => {
+      if (item.id === id) {
+        const next = { ...item };
+        if (field === 'pdfs') {
+          next.title = editTitle;
+          next.url = editUrl || undefined;
+          if (editUrl) {
+            next.fileName = 'Web Link';
+            next.fileSize = 'External URL';
+            next.fileData = undefined;
+          }
+        } else if (field === 'notes') {
+          next.title = editTitle;
+          next.content = editContent;
+          next.updatedAt = new Date().toISOString();
+        } else if (field === 'videos') {
+          next.title = editTitle;
+          next.url = editUrl;
+          const isYoutube = editUrl.includes('youtube.com') || editUrl.includes('youtu.be');
+          next.platform = isYoutube ? 'youtube' : 'generic';
+        } else if (field === 'concepts') {
+          next.title = editTitle;
+          next.content = editContent;
+          next.codeSnippet = editCodeSnippet || undefined;
+        } else if (field === 'coding') {
+          next.title = editTitle;
+          next.difficulty = editDifficulty;
+          next.problemStatement = editContent;
+          next.starterCode = editStarterCode;
+          next.solution = editSolution;
+        } else if (field === 'interviews') {
+          next.question = editTitle;
+          next.answer = editContent;
+          next.level = editDifficulty;
+        } else if (field === 'quizzes') {
+          next.question = editTitle;
+          next.options = [...editOptions];
+          next.correctIndex = editCorrectIndex;
+          next.explanation = editExplanation;
+        } else if (field === 'trackers') {
+          next.title = editTitle;
+          next.started = editTrackerStarted;
+          next.completed = editTrackerCompleted;
+          next.revised = editTrackerRevised;
+          next.notes = editTrackerNotes || undefined;
+          if (next.isPerfect) {
+            next.confidence = 100;
+          }
+        }
+        return next;
+      }
+      return item;
+    });
+
+    onUpdateDb({ [field]: updatedArray });
+    setEditingItem(null);
+  };
+
+  // Filter items matching the current subtopicId
+  const subtopicId = subtopic.id;
+  const listPdfs = dbState.pdfs.filter(x => x.subtopicId === subtopicId);
+  const listNotes = dbState.notes.filter(x => x.subtopicId === subtopicId);
+  const listVideos = dbState.videos.filter(x => x.subtopicId === subtopicId);
+  const listConcepts = dbState.concepts.filter(x => x.subtopicId === subtopicId);
+  const listCoding = dbState.coding.filter(x => x.subtopicId === subtopicId);
+  const listInterviews = dbState.interviews.filter(x => x.subtopicId === subtopicId);
+  const listQuizzes = dbState.quizzes.filter(x => x.subtopicId === subtopicId);
+  const listTrackers = (dbState.trackers || []).filter(x => x.subtopicId === subtopicId);
+
+  // Trigger copy handler
+  const handleCopyText = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedItem(id);
+    setTimeout(() => setCopiedItem(null), 1500);
+  };
+
+  // Core concept handlers
+  const handleAddCoreConcept = (val: string) => {
+    if (!val.trim()) return;
+    const currentList = subtopic.coreConcepts || [];
+    const updatedSubtopics = dbState.subtopics.map(s => 
+      s.id === subtopic.id ? { ...s, coreConcepts: [...currentList, val.trim()] } : s
+    );
+    onUpdateDb({ subtopics: updatedSubtopics });
+    setNewConceptVal('');
+    setAddConceptOpen(false);
+  };
+
+  const handleRemoveCoreConcept = (index: number) => {
+    const currentList = subtopic.coreConcepts || [];
+    const filtered = currentList.filter((_, idx) => idx !== index);
+    const updatedSubtopics = dbState.subtopics.map(s => 
+      s.id === subtopic.id ? { ...s, coreConcepts: filtered } : s
+    );
+    onUpdateDb({ subtopics: updatedSubtopics });
+  };
+
+  // Subtopic editor handlers
+  const handleUpdateSubtopic = (name: string, description: string) => {
+    if (!name.trim()) return;
+    const updated = dbState.subtopics.map(s => 
+      s.id === subtopic.id ? { ...s, name: name.trim(), description: description.trim() } : s
+    );
+    onUpdateDb({ subtopics: updated });
+    setEditSubModalOpen(false);
+  };
+
+  const handleExecuteDeleteSubtopic = () => {
+    if (onDeleteSubtopic) {
+      onDeleteSubtopic(subtopic.id);
+      onBack();
+    }
+  };
+
+  // Study Assistant live interactions fetch
+  const handleAIAssistantClick = async (type: 'test' | 'cards' | 'roadmap' | 'summary' | 'faang' | 'coding') => {
+    setCurrentInteraction(type);
+    setAssistantLoading(true);
+    setAssistantError('');
+    setAssistantData(null);
+    setSelectedQuizOption(null);
+    setQuizSubmitted(false);
+    setActiveCardIndex(0);
+    setIsCardFlipped(false);
+
+    let backendType = '';
+    if (type === 'test') backendType = 'quiz';
+    else if (type === 'cards') backendType = 'flashcards';
+    else if (type === 'summary') backendType = 'notes';
+    else if (type === 'roadmap') backendType = 'roadmap';
+    else if (type === 'faang') backendType = 'interview';
+    else if (type === 'coding') backendType = 'coding';
+
+    try {
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: backendType,
+          topicName: topic.name,
+          subtopicName: subtopic.name
+        })
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to generate study artifact');
+      }
+      setAssistantData(data.result);
+    } catch (err: any) {
+      console.error(err);
+      setAssistantError(err.message || 'Failed to reach AI study agent. Please try again.');
+    } finally {
+      setAssistantLoading(false);
+    }
+  };
+
+  const [savingArtifact, setSavingArtifact] = useState<string | null>(null);
+
+  const saveSynthesizedNote = (noteTitle: string, noteContent: string) => {
+    setSavingArtifact('summary');
+    const newNote: NoteItem = {
+      id: `note-${Date.now()}`,
+      subtopicId: subtopic.id,
+      title: noteTitle,
+      content: noteContent,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    onUpdateDb({ notes: [...dbState.notes, newNote] });
+    setTimeout(() => setSavingArtifact(null), 2000);
+  };
+
+  const saveSynthesizedInterview = (q: string, a: string, lvl: string) => {
+    setSavingArtifact('faang');
+    const newInterview: InterviewItem = {
+      id: `interview-${Date.now()}`,
+      subtopicId: subtopic.id,
+      question: q,
+      answer: a,
+      level: lvl as any,
+      createdAt: new Date().toISOString()
+    };
+    onUpdateDb({ interviews: [...dbState.interviews, newInterview] });
+    setTimeout(() => setSavingArtifact(null), 2000);
+  };
+
+  const saveSynthesizedCoding = (titleVal: string, problemStatementVal: string, difficultyVal: string, starterCodeVal: string, solutionVal: string) => {
+    setSavingArtifact('coding');
+    const newCoding: CodingItem = {
+      id: `coding-${Date.now()}`,
+      subtopicId: subtopic.id,
+      title: titleVal,
+      difficulty: difficultyVal as any,
+      problemStatement: problemStatementVal,
+      starterCode: starterCodeVal,
+      solution: solutionVal,
+      createdAt: new Date().toISOString()
+    };
+    onUpdateDb({ coding: [...dbState.coding, newCoding] });
+    setTimeout(() => setSavingArtifact(null), 2000);
+  };
+
+  // Trigger Gemini AI generation endpoint
+  const handleAIGenerate = async () => {
+    setAiGenerating(true);
+    setAiError('');
+    
+    // Choose custom loader messages based on current Tab selection
+    const messages = {
+      tracker: 'Gemini is brainstorming high-yield technical interview topics...',
+      notes: 'Gemini is compiling textbooks & writing markdown course notes...',
+      concepts: 'Gemini is generating clean layout concepts and visual code syntax...',
+      coding: 'Gemini is designing unique algorithm challenges & solution code...',
+      interviews: 'Gemini is framing real-world tech interview questions with complete solutions...',
+      quizzes: 'Gemini is preparing diagnostic code questions & detailed explanations...'
+    };
+    setGenerationStep(messages[activeTab as keyof typeof messages] || 'Querying Gemini API...');
+
+    try {
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: activeTab,
+          topicName: topic.name,
+          subtopicName: subtopic.name
+        })
+      });
+
+      const resData = await response.json();
+      if (!resData.success) {
+        throw new Error(resData.error || 'Server returned failure token');
+      }
+
+      setGenerationStep('Integrating AI payload into cache...');
+      const payload = resData.result;
+
+      if (activeTab === 'notes') {
+        const newNote: NoteItem = {
+          id: `note-${Date.now()}`,
+          subtopicId,
+          title: `AI Note: ${subtopic.name}`,
+          content: payload,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        onUpdateDb({ notes: [...dbState.notes, newNote] });
+      } else if (activeTab === 'concepts') {
+        const newConcept: ConceptItem = {
+          id: `concept-${Date.now()}`,
+          subtopicId,
+          title: payload.title || `Concept for ${subtopic.name}`,
+          content: payload.content || 'Synthesized Concept text',
+          codeSnippet: payload.codeSnippet || '',
+          createdAt: new Date().toISOString()
+        };
+        onUpdateDb({ concepts: [...dbState.concepts, newConcept] });
+      } else if (activeTab === 'coding') {
+        const newCoding: CodingItem = {
+          id: `coding-${Date.now()}`,
+          subtopicId,
+          title: payload.title || 'Coding Challenge',
+          difficulty: payload.difficulty || 'medium',
+          problemStatement: payload.problemStatement || '',
+          starterCode: payload.starterCode || '',
+          solution: payload.solution || '',
+          createdAt: new Date().toISOString()
+        };
+        onUpdateDb({ coding: [...dbState.coding, newCoding] });
+      } else if (activeTab === 'interviews') {
+        const newInterview: InterviewItem = {
+          id: `interview-${Date.now()}`,
+          subtopicId,
+          question: payload.question || 'Interview Question?',
+          answer: payload.answer || 'Interview Answer.',
+          level: payload.level || 'mid',
+          createdAt: new Date().toISOString()
+        };
+        onUpdateDb({ interviews: [...dbState.interviews, newInterview] });
+      } else if (activeTab === 'quizzes') {
+        const newQuiz: QuizItem = {
+          id: `quiz-${Date.now()}`,
+          subtopicId,
+          question: payload.question || 'Sample Multiple Choice Code Question?',
+          options: payload.options || ['Option A', 'Option B', 'Option C', 'Option D'],
+          correctIndex: Number.isInteger(payload.correctIndex) ? payload.correctIndex : 0,
+          explanation: payload.explanation || '',
+          createdAt: new Date().toISOString()
+        };
+        onUpdateDb({ quizzes: [...dbState.quizzes, newQuiz] });
+      } else if (activeTab === 'tracker') {
+        const newTr: TrackerItem = {
+          id: `tr-${Date.now()}`,
+          subtopicId,
+          title: payload.title || `Study topic for ${subtopic.name}`,
+          started: false,
+          completed: false,
+          revised: false,
+          confidence: 30, // Default base confidence
+          isPerfect: false,
+          notes: payload.notes || undefined,
+          createdAt: new Date().toISOString()
+        };
+        onUpdateDb({ trackers: [...(dbState.trackers || []), newTr] });
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'Failed to trigger Gemini API. Please make sure the server key is defined.');
+    } finally {
+      setAiGenerating(false);
+      setGenerationStep('');
+    }
+  };
+
+  // Handle file choice
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfFileName(file.name);
+    
+    const sizeInMB = file.size / (1024 * 1024);
+    const sizeStr = sizeInMB > 1 
+      ? `${sizeInMB.toFixed(2)} MB` 
+      : `${(file.size / 1024).toFixed(0)} KB`;
+    setPdfFileSize(sizeStr);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPdfFileData(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle Manual Item additions
+  const handleSaveManualItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualTitle.trim() && activeTab !== 'quizzes') return;
+
+    if (activeTab === 'pdfs') {
+      const newPdf: PdfItem = {
+        id: `pdf-${Date.now()}`,
+        subtopicId,
+        title: manualTitle,
+        fileName: pdfSourceType === 'file' ? (pdfFileName || 'document.pdf') : 'Web Link',
+        fileSize: pdfSourceType === 'file' ? (pdfFileSize || '250 KB') : 'External URL',
+        fileData: pdfSourceType === 'file' ? pdfFileData : undefined,
+        url: pdfSourceType === 'url' ? manualUrl : undefined,
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ pdfs: [...dbState.pdfs, newPdf] });
+    } else if (activeTab === 'notes') {
+      const newNote: NoteItem = {
+        id: `note-${Date.now()}`,
+        subtopicId,
+        title: manualTitle,
+        content: manualContent,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      onUpdateDb({ notes: [...dbState.notes, newNote] });
+    } else if (activeTab === 'videos') {
+      const isYoutube = manualUrl.includes('youtube.com') || manualUrl.includes('youtu.be');
+      const newVideo: VideoItem = {
+        id: `vid-${Date.now()}`,
+        subtopicId,
+        title: manualTitle,
+        url: manualUrl,
+        platform: isYoutube ? 'youtube' : 'generic',
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ videos: [...dbState.videos, newVideo] });
+    } else if (activeTab === 'concepts') {
+      const newConcept: ConceptItem = {
+        id: `concept-${Date.now()}`,
+        subtopicId,
+        title: manualTitle,
+        content: manualContent,
+        codeSnippet: manualUrl || undefined, // use url field as codeSnippet block
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ concepts: [...dbState.concepts, newConcept] });
+    } else if (activeTab === 'coding') {
+      const newCoding: CodingItem = {
+        id: `coding-${Date.now()}`,
+        subtopicId,
+        title: manualTitle,
+        difficulty: codingDiff,
+        problemStatement: codingProblem,
+        starterCode: codingStarter,
+        solution: codingSol,
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ coding: [...dbState.coding, newCoding] });
+    } else if (activeTab === 'interviews') {
+      const newInterview: InterviewItem = {
+        id: `interview-${Date.now()}`,
+        subtopicId,
+        question: manualTitle,
+        answer: manualContent,
+        level: codingDiff as any, // reuse codingDiff state as level selector
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ interviews: [...dbState.interviews, newInterview] });
+    } else if (activeTab === 'quizzes') {
+      const newQuiz: QuizItem = {
+        id: `quiz-${Date.now()}`,
+        subtopicId,
+        question: manualTitle,
+        options: [...manualOption],
+        correctIndex: quizCorrectIndex,
+        explanation: quizExpl,
+        createdAt: new Date().toISOString()
+      };
+      onUpdateDb({ quizzes: [...dbState.quizzes, newQuiz] });
+    }
+
+    // Reset fields
+    setManualTitle('');
+    setManualContent('');
+    setManualUrl('');
+    setManualOption(['', '', '', '']);
+    setQuizCorrectIndex(0);
+    setQuizExpl('');
+    setPdfFileName('');
+    setPdfFileSize('');
+    setPdfFileData('');
+    setPdfSourceType('file');
+    setModalOpen(false);
+  };
+
+  // Item removal triggers
+  const handleDeleteItem = (itemId: string, field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes') => {
+    const array = dbState[field] as any[];
+    const item = array.find(x => x.id === itemId);
+    const title = item ? (item.title || item.question || item.name || 'this item') : 'this item';
+    setDeleteTarget({ id: itemId, field, title });
+  };
+
+  const executeDeleteItem = () => {
+    if (!deleteTarget) return;
+    const { id, field } = deleteTarget;
+    const array = dbState[field] as any[];
+    const filtered = array.filter(item => item.id !== id);
+    onUpdateDb({ [field]: filtered });
+    setDeleteTarget(null);
+  };
+
+  const textSizeClass = textSize === 'A-' ? 'text-xs' : textSize === 'A+' ? 'text-sm sm:text-base' : 'text-xs sm:text-sm';
+
+  return (
+    <div className={`space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-200 ${textSizeClass}`}>
+      
+      {/* Upper breadcrumbs row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase font-sans">
+          <button onClick={onBack} className="hover:text-slate-900 dark:hover:text-white cursor-pointer transition-colors">TOPICS</button>
+          <span className="text-slate-300 dark:text-slate-700 select-none">&gt;</span>
+          <button onClick={onBack} className="hover:text-slate-900 dark:hover:text-white cursor-pointer transition-colors">{topic.name}</button>
+          <span className="text-slate-300 dark:text-slate-700 select-none">&gt;</span>
+          <span className="text-blue-600 dark:text-blue-400 select-none">{subtopic.name}</span>
+        </div>
+
+        {/* Global theme controls sync status header indicator */}
+        <div className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 font-mono select-none uppercase">
+          Study Station
+        </div>
+      </div>
+
+      {/* Title tag and category metadata */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white leading-none tracking-tight font-sans">
+              {subtopic.name}
+            </h2>
+            <div className="flex items-center gap-1.5 select-none">
+              <button
+                onClick={() => {
+                  setEditSubName(subtopic.name);
+                  setEditSubDesc(subtopic.description || '');
+                  setEditSubModalOpen(true);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Edit subtopic"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setDeleteSubConfirmOpen(true)}
+                className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors cursor-pointer"
+                title="Delete subtopic"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl font-sans">
+            {subtopic.description || 'Synthesize guides, bookmarks, coding logs and trigger Gemini test sheets.'}
+          </p>
+        </div>
+
+        {/* Right Controls Row (Text Size, Theme, Synced Pill) */}
+        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {/* TEXT SIZE pill */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-705">
+            <span className="text-[9px] tracking-wider text-slate-400 font-bold uppercase select-none mr-1 pl-1">TEXT SIZE</span>
+            <div className="flex items-center gap-0.5">
+              {(['A-', 'A', 'A+'] as const).map(sz => (
+                <button
+                  key={sz}
+                  type="button"
+                  onClick={() => setTextSize(sz)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${textSize === sz ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 shadow-sm' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                >
+                  {sz}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* THEME pill */}
+          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200 dark:border-slate-705">
+            <span className="text-[9px] pl-2 pr-1.5 tracking-wider text-slate-400 font-bold uppercase select-none">THEME</span>
+            <button
+              type="button"
+              onClick={() => isDarkMode && onToggleTheme?.()}
+              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold text-[10px] transition-all cursor-pointer ${!isDarkMode ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-400 hover:text-white'}`}
+            >
+              ☀️ Olive
+            </button>
+            <button
+              type="button"
+              onClick={() => !isDarkMode && onToggleTheme?.()}
+              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold text-[10px] transition-all cursor-pointer ${isDarkMode ? 'bg-slate-950 text-white shadow-xs border border-slate-800' : 'text-slate-500 hover:text-slate-900'}`}
+            >
+              🌙 Night
+            </button>
+          </div>
+
+          {/* Synced status pill */}
+          <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-650 dark:text-emerald-400 font-bold text-[10px] uppercase tracking-wider font-sans select-none shadow-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Synced Offline</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs list (Screen 5 Row of Pills) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-150 dark:border-slate-800">
+        {TABS.map(tab => {
+          const TabIcon = tab.icon;
+          const isSelected = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setAiError('');
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold tracking-wide uppercase transition-all shrink-0 cursor-pointer border
+                ${isSelected
+                  ? 'bg-blue-600 text-white dark:bg-blue-600 dark:text-white border-transparent shadow'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-800/50 hover:text-slate-950 dark:hover:text-white'
+                }
+              `}
+            >
+              <TabIcon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === 'dashboard' ? (
+        /* =================== GE-STUDY STATION / ASSISTANT DASHBOARD LAYOUT =================== */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
+          
+          {/* LEFT AREA: Study Assistant Workspace (2/3 width) */}
+          <div className="lg:col-span-2 space-y-6 bg-white dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-800 p-6 shadow-xs">
+            
+            {currentInteraction === null ? (
+              <div className="space-y-6">
+                {/* 1. Revision Quiz Button Pill */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
+                  <button
+                    onClick={() => handleAIAssistantClick('test')}
+                    className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-500 hover:to-indigo-550 text-white font-extrabold text-xs uppercase tracking-wider font-sans shadow-sm cursor-pointer transition-all active:scale-95 shrink-0"
+                  >
+                    <Sparkles className="w-4 h-4 animate-pulse text-white" />
+                    <span>REVISION QUIZ</span>
+                  </button>
+                  <p className="text-[11px] font-medium text-slate-550 dark:text-slate-450 leading-relaxed font-sans">
+                    Instantly request a highly interactive, custom 4-option evaluation test generated from textbooks and trained on <strong className="text-blue-600 dark:text-blue-400 font-bold">"{subtopic.name}"</strong> elements.
+                  </p>
+                </div>
+
+                <hr className="border-slate-100 dark:border-slate-800" />
+
+                {/* 2. Headline Title & Sparkles */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
+                    <h3 className="text-base font-extrabold font-sans text-slate-900 dark:text-white tracking-tight uppercase">
+                      ✨ Gemini AI Study Assistant
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    Generate flashcards, roadmaps, interactive tests, or textbook summaries trained on your notes materials.
+                  </p>
+                </div>
+
+                {/* 3. Grid of 6 interactive cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                  {[
+                    { id: 'test', title: 'INTERACTIVE TEST', desc: 'Quiz generated dynamically from notes', icon: HelpCircle, color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/5' },
+                    { id: 'cards', title: 'FLASHCARD DECK', desc: 'Generate dynamic flip study notes', icon: FileCode, color: 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/5' },
+                    { id: 'summary', title: 'TOPIC SUMMARY', desc: 'Synthesize code syntax cheat sheet', icon: FileText, color: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/5' },
+                    { id: 'roadmap', title: 'VISUAL ROADMAP', desc: 'Estimated steps to master concept', icon: Play, color: 'bg-violet-500/10 border-violet-500/20 text-violet-700 dark:text-violet-400 hover:bg-violet-500/5' },
+                    { id: 'faang', title: 'FAANG QUESTIONS', desc: 'Auto-generate interview sets', icon: Sparkles, color: 'bg-red-500/10 border-red-500/20 text-rose-700 dark:text-red-400 hover:bg-red-500/5' },
+                    { id: 'coding', title: 'CODING TASKS', desc: 'Generate new algorithm questions', icon: Code2, color: 'bg-teal-500/10 border-teal-500/20 text-teal-700 dark:text-teal-450 hover:bg-teal-500/5' }
+                  ].map(card => {
+                    const CardIcon = card.icon;
+                    return (
+                      <button
+                        key={card.id}
+                        onClick={() => handleAIAssistantClick(card.id as any)}
+                        className={`group p-4 rounded-2xl border text-left flex flex-col justify-between gap-4 transition-all duration-300 hover:shadow-sm hover:-translate-y-0.5 cursor-pointer ${card.color}`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-[10px] uppercase font-bold tracking-wider font-mono">{card.title}</span>
+                          <CardIcon className="w-3.5 h-3.5 transition-transform group-hover:scale-115" />
+                        </div>
+                        <p className="text-xs text-slate-550 dark:text-slate-400 leading-normal group-hover:text-slate-900 dark:group-hover:text-white transition-colors duration-205">
+                          {card.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* ACTIVE INTERACTIVE SESSION WORKSPACE PANEL */
+              <div className="space-y-6">
+                
+                {/* Session Header banner */}
+                <div className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-705">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-pulse" />
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-850 dark:text-white">
+                      Active AI Study Room: {currentInteraction.toUpperCase()}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCurrentInteraction(null);
+                      setAssistantData(null);
+                      setAssistantError('');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 hover:opacity-90 font-sans text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>←</span> Go back to Study Desk
+                  </button>
+                </div>
+
+                {/* Loader State */}
+                {assistantLoading && (
+                  <div className="py-24 border-2 border-dashed border-slate-205 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-950/20 rounded-2xl flex flex-col items-center justify-center text-center space-y-4">
+                    <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white font-sans">
+                        Gemini is organizing lesson plans...
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1 block">
+                        Compiling textbooks database schemas
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner state */}
+                {assistantError && (
+                  <div className="p-6 bg-red-100/10 border border-red-500/20 text-red-550 dark:text-red-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-4">
+                    <AlertCircle className="w-8 h-8 text-red-500 shrink-0" />
+                    <div>
+                      <p className="font-extrabold text-sm font-sans uppercase tracking-wide">Gemini AI Synthesis Unreached</p>
+                      <p className="text-xs leading-relaxed opacity-90 max-w-sm mx-auto mt-1">{assistantError}</p>
+                    </div>
+                    <button
+                      onClick={() => handleAIAssistantClick(currentInteraction)}
+                      className="px-4 py-2 border border-transparent rounded-xl bg-red-650 hover:bg-red-550 text-white font-bold text-xs uppercase tracking-wider font-mono shadow transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry Request</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Active content panel renders */}
+                {assistantData && (
+                  <div className="space-y-6">
+                    
+                    {/* A. MCQ Quiz taker module */}
+                    {currentInteraction === 'test' && (
+                      <div className="bg-slate-50/50 dark:bg-slate-950/20 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                            DIAGNOSTIC ACTIVE RECALL TEST
+                          </span>
+                          <button
+                            onClick={() => handleAIAssistantClick('test')}
+                            className="flex items-center gap-1.5 text-[10px] uppercase font-mono tracking-wider text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Try Another</span>
+                          </button>
+                        </div>
+
+                        <div className="text-base font-bold text-slate-905 dark:text-white leading-relaxed font-sans pt-1 space-y-1">
+                          {renderSimpleMarkdown(assistantData.question, "text-base font-bold text-slate-905 dark:text-white leading-relaxed font-sans")}
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 pt-2">
+                          {assistantData.options && assistantData.options.map((option: string, choiceIdx: number) => {
+                            const isSelected = selectedQuizOption === choiceIdx;
+                            const isCorrect = choiceIdx === assistantData.correctIndex;
+                            let btnStyle = 'border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-300';
+                            
+                            if (quizSubmitted) {
+                              if (isCorrect) {
+                                btnStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold';
+                              } else if (isSelected) {
+                                btnStyle = 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-400 font-bold';
+                              } else {
+                                btnStyle = 'border-slate-200 dark:border-slate-800/80 opacity-55 text-slate-500';
+                              }
+                            } else if (isSelected) {
+                              btnStyle = 'border-blue-600 bg-blue-650/10 dark:bg-blue-600/10 text-blue-600 dark:text-blue-400';
+                            }
+
+                            return (
+                              <button
+                                key={choiceIdx}
+                                disabled={quizSubmitted}
+                                onClick={() => setSelectedQuizOption(choiceIdx)}
+                                className={`w-full text-left p-3.5 rounded-xl border text-xs font-semibold transition-all ${btnStyle} flex items-center justify-between cursor-pointer`}
+                              >
+                                <span>{String.fromCharCode(65 + choiceIdx)}. &nbsp; {renderInlineFormat(option)}</span>
+                                {quizSubmitted && isCorrect && <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
+                                {quizSubmitted && isSelected && !isCorrect && <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {!quizSubmitted ? (
+                          <button
+                            disabled={selectedQuizOption === null}
+                            onClick={() => setQuizSubmitted(true)}
+                            className="w-full mt-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-950 text-xs font-bold uppercase tracking-wider font-mono transition disabled:opacity-45 cursor-pointer"
+                          >
+                            Submit Choice
+                          </button>
+                        ) : (
+                          <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800/60 rounded-xl space-y-2 border border-slate-200/50 dark:border-slate-705 text-left">
+                            <p className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
+                              💡 MODEL LOGIC EXPLANATION
+                            </p>
+                            <div className="text-xs leading-relaxed text-slate-650 dark:text-slate-350 space-y-1">
+                              {renderSimpleMarkdown(assistantData.explanation, "text-xs leading-relaxed text-slate-650 dark:text-slate-350")}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* B. Flashcards index card session */}
+                    {currentInteraction === 'cards' && (
+                      <div className="space-y-5 text-left">
+                        {(() => {
+                          const cards = assistantData.flashcards || [];
+                          const curCard = cards[activeCardIndex];
+                          if (!curCard) return <p className="text-center italic text-xs py-4 dark:text-slate-500">Zero cards parsed.</p>;
+
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="px-2.5 py-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                                  FLASHCARD RECALL DECK
+                                </span>
+                                <span className="text-xs font-mono text-slate-550 dark:text-slate-450 font-bold select-none">
+                                  Card {activeCardIndex + 1} of {cards.length}
+                                </span>
+                              </div>
+
+                              <div 
+                                onClick={() => setIsCardFlipped(!isCardFlipped)}
+                                className={`h-64 cursor-pointer relative select-none rounded-2xl py-8 px-6 flex flex-col justify-between overflow-hidden shadow-xs border transition-all duration-300 transform active:scale-98 text-center
+                                  ${isCardFlipped 
+                                    ? 'bg-slate-950 text-slate-100 border-slate-800' 
+                                    : 'bg-amber-50/20 dark:bg-amber-950/5 text-slate-950 dark:text-white border-amber-500/20 dark:border-amber-900/20'
+                                  }
+                                `}
+                              >
+                                <div className="text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                                  {isCardFlipped ? 'ANSWER / CODE CHEAT' : 'TERM / CONCEPT EXPLORATION'}
+                                </div>
+
+                                <div className="py-2 flex-1 flex items-center justify-center">
+                                  {isCardFlipped ? (
+                                    <div className="text-xs sm:text-sm font-medium leading-relaxed font-mono text-slate-200 max-w-lg">
+                                      {curCard.back}
+                                    </div>
+                                  ) : (
+                                    <div className="text-base sm:text-lg font-extrabold tracking-tight font-sans text-slate-900 dark:text-white max-w-lg">
+                                      {curCard.front}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="text-[9px] text-slate-400 font-mono tracking-wider uppercase select-none font-bold">
+                                  Click card to flip
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-4 pt-1">
+                                <button
+                                  disabled={activeCardIndex === 0}
+                                  onClick={() => {
+                                    setActiveCardIndex(activeCardIndex - 1);
+                                    setIsCardFlipped(false);
+                                  }}
+                                  className="px-4 py-2 text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-755 text-slate-800 dark:text-white rounded-lg transition disabled:opacity-45 cursor-pointer border border-slate-200/50 dark:border-slate-705"
+                                >
+                                  ← Back
+                                </button>
+                                
+                                <div className="flex-1 max-w-xs bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-amber-500 h-full transition-all duration-200" 
+                                    style={{ width: `${((activeCardIndex + 1) / cards.length) * 100}%` }}
+                                  />
+                                </div>
+
+                                <button
+                                  disabled={activeCardIndex === cards.length - 1}
+                                  onClick={() => {
+                                    setActiveCardIndex(activeCardIndex + 1);
+                                    setIsCardFlipped(false);
+                                  }}
+                                  className="px-4 py-2 text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-755 text-slate-800 dark:text-white rounded-lg transition disabled:opacity-45 cursor-pointer border border-slate-200/50 dark:border-slate-705"
+                                >
+                                  Next →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* C. Textbook cheatsheet renderer wrapper */}
+                    {currentInteraction === 'summary' && (
+                      <div className="space-y-4 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                            TEXTBOOK SUMMARY & SYNTAX CHEATS
+                          </span>
+                          <button
+                            onClick={() => saveSynthesizedNote(`${subtopic.name} STUDY SUMMARY`, assistantData)}
+                            disabled={savingArtifact === 'summary'}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase font-bold border tracking-wider transition ${savingArtifact === 'summary' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/25' : 'bg-blue-600 hover:bg-blue-500 text-white border-transparent cursor-pointer'}`}
+                          >
+                            {savingArtifact === 'summary' ? '✓ Saved into Notes' : '💾 Save to Notes Vault'}
+                          </button>
+                        </div>
+
+                        <div className="p-5 bg-slate-50 dark:bg-slate-950/20 rounded-2xl border border-slate-200" style={{ contentVisibility: 'auto' }}>
+                          <div className="max-h-96 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-2 p-1">
+                            {renderSimpleMarkdown(assistantData)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* D. Master Method Roadmap progress timeline checklist */}
+                    {currentInteraction === 'roadmap' && (
+                      <div className="space-y-5 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                            METHODICAL ROADMAP TIMELINE
+                          </span>
+                        </div>
+
+                        <div className="relative border-l-2 border-dashed border-slate-200 dark:border-slate-800 pl-6 ml-3 space-y-6 pt-2">
+                          {assistantData.steps && assistantData.steps.map((step: any, stepIdx: number) => (
+                            <div key={stepIdx} className="relative">
+                              <div className="absolute -left-[35px] top-1.5 w-6 h-6 rounded-full bg-blue-650 text-white font-mono text-[11px] font-extrabold flex items-center justify-center shadow-xs">
+                                {step.stepNum || (stepIdx + 1)}
+                              </div>
+
+                              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/10 space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                  <h5 className="text-sm font-extrabold text-slate-905 dark:text-white font-sans">
+                                    {step.title}
+                                  </h5>
+                                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[9px] text-slate-500 dark:text-slate-400 font-mono tracking-wider font-bold">
+                                    ⏱️ {step.timeframe}
+                                  </span>
+                                </div>
+
+                                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                                  {step.focus}
+                                </p>
+
+                                <div className="pt-2 border-t border-slate-150/50 dark:border-slate-800/50 space-y-1.5">
+                                  {step.tasks && step.tasks.map((task: string, taskIdx: number) => (
+                                    <label key={taskIdx} className="flex items-start gap-2 text-xs font-semibold text-slate-600 dark:text-slate-350 hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer select-none font-sans">
+                                      <input 
+                                        type="checkbox" 
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600" 
+                                      />
+                                      <span>{task}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* E. Senior Accordion Scenario Answers */}
+                    {currentInteraction === 'faang' && (
+                      <div className="space-y-4 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded bg-red-500/10 text-rose-600 dark:text-red-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                            🧑‍💻 FAANG SCENARIO INTERVIEW
+                          </span>
+                          <button
+                            onClick={() => saveSynthesizedInterview(assistantData.question, assistantData.answer, assistantData.level || 'senior')}
+                            disabled={savingArtifact === 'faang'}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase border tracking-wider transition ${savingArtifact === 'faang' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/25' : 'bg-blue-600 hover:bg-blue-500 text-white border-transparent cursor-pointer'}`}
+                          >
+                            {savingArtifact === 'faang' ? '✓ Saved' : '💾 Save to Interview bank'}
+                          </button>
+                        </div>
+
+                        <div className="p-5 bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                          <span className="inline-block px-2 py-0.5 rounded bg-pink-100 dark:bg-pink-950 text-pink-600 dark:text-pink-300 text-[9px] font-bold font-mono uppercase tracking-wider">
+                            {assistantData.level || 'senior'} level Scenario
+                          </span>
+
+                          <div className="text-sm font-extrabold text-slate-905 dark:text-white leading-relaxed font-sans space-y-1">
+                            {renderSimpleMarkdown(`Q: ${assistantData.question}`, "text-sm font-extrabold text-slate-905 dark:text-white font-sans leading-relaxed")}
+                          </div>
+
+                          <div className="border-t border-slate-150/50 dark:border-slate-850/50 pt-3 space-y-1.5">
+                            <span className="text-[9px] font-mono tracking-widest text-slate-400 uppercase font-sans">CORRECT RESPONSE METHOD MATRIX</span>
+                            <div className="text-xs leading-relaxed text-slate-650 dark:text-slate-350 font-mono" style={{ contentVisibility: 'auto' }}>
+                              {renderSimpleMarkdown(assistantData.answer)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* F. Algoritm task with problem statements */}
+                    {currentInteraction === 'coding' && (
+                      <div className="space-y-4 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 text-[10px] font-bold font-mono uppercase tracking-wide">
+                            ALGORITHM DIAGNOSTIC CODE SHEET
+                          </span>
+                          <button
+                            onClick={() => saveSynthesizedCoding(assistantData.title, assistantData.problemStatement, assistantData.difficulty || 'medium', assistantData.starterCode || '', assistantData.solution || '')}
+                            disabled={savingArtifact === 'coding'}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase border tracking-wider transition ${savingArtifact === 'coding' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/25' : 'bg-blue-600 hover:bg-blue-500 text-white border-transparent cursor-pointer'}`}
+                          >
+                            {savingArtifact === 'coding' ? '✓ Saved' : '💾 Add to Challenges'}
+                          </button>
+                        </div>
+
+                        <div className="p-5 bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase tracking-widest text-white 
+                              ${(assistantData.difficulty || 'medium') === 'easy' ? 'bg-emerald-500' : (assistantData.difficulty || 'medium') === 'hard' ? 'bg-rose-500' : 'bg-amber-500'}
+                            `}>
+                              {assistantData.difficulty || 'medium'}
+                            </span>
+                            <h5 className="text-sm font-extrabold text-slate-905 dark:text-white font-sans leading-none">
+                              {assistantData.title}
+                            </h5>
+                          </div>
+
+                          <div className="text-xs leading-relaxed text-slate-655 dark:text-slate-350 font-sans border-b border-dashed border-slate-150 dark:border-slate-800 pb-3">
+                            {renderSimpleMarkdown(assistantData.problemStatement)}
+                          </div>
+
+                          {assistantData.starterCode && (
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase font-mono">Starter Workspace Layout</span>
+                              <pre className="p-3.5 rounded-xl bg-gray-950 border border-gray-850 text-emerald-400 font-mono text-xs overflow-x-auto">
+                                <code>{assistantData.starterCode}</code>
+                              </pre>
+                            </div>
+                          )}
+
+                          {assistantData.solution && (
+                            <div className="space-y-1 border-t border-slate-150/45 dark:border-slate-800/40 pt-3">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase font-mono block">Reference Reference Solution Code</span>
+                              <pre className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-mono text-xs overflow-x-auto">
+                                <code>{assistantData.solution}</code>
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+
+          {/* RIGHT AREA: Core Concepts & Recall Systems (1/3 width) */}
+          <div className="space-y-6">
+            
+            {/* CARD 1: CORE CONCEPTS */}
+            <div className="bg-slate-950 dark:bg-slate-900 rounded-3xl p-6 border border-slate-900 shadow-xl text-white flex flex-col justify-between text-left">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5 font-bold font-sans text-xs tracking-wider uppercase text-emerald-400">
+                    <span>🗃️</span>
+                    <span>CORE CONCEPTS</span>
+                  </div>
+                  <button
+                    onClick={() => setAddConceptOpen(true)}
+                    className="text-[10px] uppercase font-mono tracking-wider font-bold bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-700"
+                  >
+                    + add item
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 font-semibold font-sans uppercase tracking-wide leading-none select-none">
+                  Key items of subtopic
+                </p>
+
+                {(subtopic.coreConcepts || []).length === 0 ? (
+                  <p className="text-xs text-slate-500 font-sans italic text-center py-8">
+                    Click Add to list core items.
+                  </p>
+                ) : (
+                  <ul className="space-y-2 mt-4">
+                    {(subtopic.coreConcepts || []).map((item, index) => (
+                      <li key={index} className="group flex items-start gap-2.5 text-xs text-slate-300 hover:text-white transition-colors duration-150 py-1 border-b border-slate-850 last:border-0">
+                        <span className="text-emerald-500 mt-0.5 select-none font-bold">•</span>
+                        <span className="flex-1 leading-relaxed">{item}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveCoreConcept(index);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-red-400 rounded transition-opacity cursor-pointer"
+                          title="Remove concept"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* CARD 2: RECALL ADVICE AMBER UNIT */}
+            <div className="bg-amber-500/10 dark:bg-amber-950/10 border border-amber-500/20 rounded-3xl p-6 text-left space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400 text-xs font-sans tracking-wide uppercase select-none">
+                <span>🧠</span>
+                <span>EFFECTIVE RECALL SYSTEM</span>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-650 dark:text-slate-350 font-medium font-sans">
+                Science confirms writing custom manual summaries and practicing micro quiz trials boosts active recall by <strong className="text-amber-700 dark:text-amber-400 font-bold font-sans">82%</strong>. Use the active study tools to draft your revision checklist.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+      ) : (
+        /* =================== STANDARD DETAILED RESOURCES TABS CARD WORKSPACE =================== */
+        <div className="bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+        
+        {/* Dynamic Inner Tab Description headers */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800 mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white capitalize font-sans leading-none">
+              {activeTab === 'pdfs' ? 'PDF Study Worksheets' : activeTab === 'interviews' ? 'Interview Q&A pairs' : activeTab}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-sans">
+              {activeTab === 'notes' && 'Write clear summaries and study notes with custom Markdown syntax.'}
+              {activeTab === 'pdfs' && 'Simulate, upload, and save detailed scholarly files or cheatsheets.'}
+              {activeTab === 'videos' && 'Pin academic YouTube tutorials and play them inline.'}
+              {activeTab === 'concepts' && 'Consolidate complex programming language paradigms and configurations.'}
+              {activeTab === 'coding' && 'Practice diagnostic syntax challenges with revealable mock reference solutions.'}
+              {activeTab === 'interviews' && 'Prepare using high-level senior technical interview scenarios.'}
+              {activeTab === 'quizzes' && 'Test your mental memory with multi-choice checks & visual explanations.'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* AI Generator button: Not visible for PDFs or Videos (only text generative supports) */}
+            {activeTab !== 'pdfs' && activeTab !== 'videos' && (
+              <button
+                onClick={handleAIGenerate}
+                disabled={aiGenerating}
+                className="inline-flex items-center gap-1.5 px-4.5 py-2.5 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs uppercase tracking-wider font-mono transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 animate-pulse text-blue-600 dark:text-blue-400" />
+                <span>AI Generate</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-1 px-4.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-900 dark:text-white border border-slate-200/50 dark:border-slate-705 font-bold text-xs uppercase tracking-wider font-mono transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-blue-600 dark:text-blue-400 font-bold" />
+              <span>Add</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Global loader during AI processes */}
+        {aiGenerating && (
+          <div className="py-12 border-2 border-dashed border-blue-500/20 bg-blue-500/5 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 mb-6">
+            <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white font-sans">
+                Generating study elements...
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-mono tracking-wide">
+                {generationStep}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {aiError && (
+          <div className="p-4 bg-red-100/10 border border-red-500/20 text-red-550 dark:text-red-400 rounded-xl mb-6 text-xs flex items-start gap-2 animate-in fade-in duration-200">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Gemini AI Synthesis Unreached</p>
+              <p className="mt-1 leading-relaxed opacity-90">{aiError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Inner Content panels according to chosen tabs */}
+        
+        {/* =============== Tab 0: Topics Tracker =============== */}
+        {activeTab === 'tracker' && (
+          <div className="space-y-6">
+            {/* Gamified summary panel */}
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-emerald-500/5 to-transparent border border-slate-200 dark:border-slate-805/70 text-slate-800 dark:text-slate-100 backdrop-blur-xs">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-lg font-bold font-sans flex items-center gap-2">
+                    <span className="text-xl">🏆</span>
+                    <span>High-Yield Interview Topics Masterboard</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Track your readiness, mark revisions, and rate your confidence for complex {subtopic.name} interview challenges.
+                  </p>
+                </div>
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-3 md:gap-4 font-mono text-center shrink-0">
+                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
+                    <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">{listTrackers.length}</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Topics</div>
+                  </div>
+                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
+                    <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 font-bold">
+                      {listTrackers.length > 0 ? Math.round((listTrackers.filter(t => t.completed).length / listTrackers.length) * 100) : 0}%
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Done</div>
+                  </div>
+                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
+                    <div className="text-xl font-extrabold text-amber-500">
+                      {listTrackers.filter(t => t.isPerfect).length}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Perfect</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              {listTrackers.length > 0 && (
+                <div className="mt-4.5">
+                  <div className="flex justify-between items-center text-[10px] font-bold font-mono tracking-wider text-slate-400 dark:text-slate-400 mb-1">
+                    <span>OVERALL READINESS AVERAGE</span>
+                    <span>
+                      {Math.round(listTrackers.reduce((acc, curr) => acc + (curr.confidence || 0), 0) / listTrackers.length)}% Confidence
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-200 dark:bg-slate-800/80 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-300"
+                      style={{ width: `${Math.round(listTrackers.reduce((acc, curr) => acc + (curr.confidence || 0), 0) / listTrackers.length)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quick adding container inline */}
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newTrackerTitle.trim()) return;
+                const newTr: TrackerItem = {
+                  id: `tr-${Date.now()}`,
+                  subtopicId,
+                  title: newTrackerTitle.trim(),
+                  started: false,
+                  completed: false,
+                  revised: false,
+                  confidence: 30, // Default base confidence
+                  isPerfect: false,
+                  createdAt: new Date().toISOString()
+                };
+                onUpdateDb({ trackers: [...(dbState.trackers || []), newTr] });
+                setNewTrackerTitle('');
+              }}
+              className="flex items-center gap-2 p-3 bg-white dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800"
+            >
+              <input
+                type="text"
+                placeholder="💡 Add vital interview topic reminder... e.g., Retaining lexical environment memory leaks"
+                value={newTrackerTitle}
+                onChange={(e) => setNewTrackerTitle(e.target.value)}
+                className="flex-1 bg-transparent text-sm text-slate-905 dark:text-white placeholder-slate-400 outline-hidden focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold font-sans transition-colors shrink-0 cursor-pointer"
+              >
+                + Add Topic
+              </button>
+            </form>
+
+            {/* Topic Tracker List rendering */}
+            <div className="space-y-3.5">
+              {listTrackers.map(tr => {
+                const handleToggleField = (field: 'started' | 'completed' | 'revised' | 'isPerfect') => {
+                  const updated = (dbState.trackers || []).map(t => {
+                    if (t.id === tr.id) {
+                      const updatedItem = { ...t, [field]: !t[field] };
+                      if (field === 'isPerfect' && updatedItem.isPerfect) {
+                        updatedItem.confidence = 100;
+                        updatedItem.completed = true;
+                        updatedItem.started = true;
+                      }
+                      return updatedItem;
+                    }
+                    return t;
+                  });
+                  onUpdateDb({ trackers: updated });
+                };
+
+                const handleSliderChange = (val: number) => {
+                  const updated = (dbState.trackers || []).map(t => {
+                    if (t.id === tr.id) {
+                      return { ...t, confidence: val, isPerfect: val === 100 ? true : t.isPerfect };
+                    }
+                    return t;
+                  });
+                  onUpdateDb({ trackers: updated });
+                };
+
+                return (
+                  <div 
+                    key={tr.id} 
+                    className={`p-4.5 rounded-2xl border transition-all hover:bg-slate-50/15 dark:hover:bg-slate-805/10 relative group flex flex-col gap-4
+                      ${tr.isPerfect 
+                        ? 'bg-emerald-500/10 border-emerald-500/25 dark:border-emerald-500/15' 
+                        : 'bg-white dark:bg-slate-950/20 border-slate-202 dark:border-slate-805'
+                      }
+                    `}
+                  >
+                    {/* Top Row: Title, Perfect Toggle, Delete */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1 select-none flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-normal font-sans">
+                            {tr.title}
+                          </h4>
+                          {tr.isPerfect && (
+                            <span className="inline-flex items-center gap-1 bg-emerald-500/10 dark:bg-emerald-500/20 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-extrabold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                              ⭐ Perfectly Perfect
+                            </span>
+                          )}
+                        </div>
+                        {tr.notes && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-sans italic pr-6">
+                            "{tr.notes}"
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Small actions */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(tr, 'trackers')}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/65 transition-colors cursor-pointer"
+                          title="Edit Topic Details"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const filtered = (dbState.trackers || []).filter(t => t.id !== tr.id);
+                            onUpdateDb({ trackers: filtered });
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/65 transition-colors cursor-pointer"
+                          title="Delete Topic Tracker"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Middle Row: Progress and Checkbox Actions */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                      {/* Interactive checkboxes */}
+                      <div className="flex flex-wrap items-center gap-2 select-none">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleField('started')}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                            tr.started 
+                              ? 'bg-blue-600 border-transparent text-white shadow-xs' 
+                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          <input type="checkbox" checked={tr.started || false} readOnly className="pointer-events-none rounded text-blue-600 focus:ring-0" />
+                          <span>Started</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleField('completed')}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                            tr.completed 
+                              ? 'bg-emerald-600 border-transparent text-white shadow-xs' 
+                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          <input type="checkbox" checked={tr.completed || false} readOnly className="pointer-events-none rounded text-emerald-600 focus:ring-0" />
+                          <span>Completed</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleField('revised')}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                            tr.revised 
+                              ? 'bg-violet-650 border-transparent text-white shadow-xs' 
+                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          <input type="checkbox" checked={tr.revised || false} readOnly className="pointer-events-none rounded text-violet-600 focus:ring-0" />
+                          <span>Revised</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleField('isPerfect')}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                            tr.isPerfect 
+                              ? 'bg-amber-600 border-transparent text-white shadow-xs' 
+                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                          title="Mark as 100% Perfectly Perfect in this Topic!"
+                        >
+                          <span>⭐</span>
+                          <span>Perfect</span>
+                        </button>
+                      </div>
+
+                      {/* Interactive Confidence Gauge selector */}
+                      <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/80 transition-colors">
+                        <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-slate-400 shrink-0">Clear Score:</span>
+                        <div className="flex-1 flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="10"
+                            value={tr.confidence || 0}
+                            onChange={(e) => handleSliderChange(Number(e.target.value))}
+                            className="w-full accent-emerald-500 h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-ew-resize focus:outline-none"
+                          />
+                          <span className="text-xs font-bold font-mono tracking-tighter shrink-0 text-slate-700 dark:text-amber-400 w-10 text-right">
+                            {tr.confidence || 0}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {listTrackers.length === 0 && (
+                <div className="py-14 text-center">
+                  <div className="text-4xl text-slate-400 select-none">🗒️</div>
+                  <h4 className="mt-2.5 font-bold text-sm text-slate-700 dark:text-slate-300 font-sans">Topics Tracker is empty</h4>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto font-sans leading-normal">
+                    Type a high-yield interview topic in the form above. Map and checkbox-track your study status to ace interview questions!
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =============== Tab 1: Notes =============== */}
+        {activeTab === 'notes' && (
+          <div className="space-y-6">
+            {listNotes.map(note => (
+              <div key={note.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 dark:bg-gray-900/50 relative group">
+                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => handleCopyText(note.content, note.id)}
+                    className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-150 dark:border-gray-700 transition"
+                  >
+                    {copiedItem === note.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <button 
+                    onClick={() => handleStartEdit(note, 'notes')}
+                    className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-blue-600 dark:hover:text-blue-450 border border-gray-150 dark:border-gray-700 transition"
+                    title="Edit Note"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteItem(note.id, 'notes')}
+                    className="p-1.5 rounded-lg bg-red-50 text-red-650 hover:text-red-750 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <h4 className="text-lg font-bold text-gray-900 dark:text-white font-sans pr-14 leading-none">
+                  {note.title}
+                </h4>
+                <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-2">
+                  Modified: {new Date(note.updatedAt).toLocaleDateString()}
+                </div>
+
+                {/* Styled Markdown block */}
+                <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-800/80 prose dark:prose-invert max-w-none">
+                  {renderSimpleMarkdown(note.content)}
+                </div>
+              </div>
+            ))}
+
+            {listNotes.length === 0 && !aiGenerating && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in notes yet. Add or generate one.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 2: PDFs =============== */}
+        {activeTab === 'pdfs' && (
+          <div className="space-y-4">
+            {listPdfs.map(pdf => {
+              const handleOpenPdfFile = (e: React.MouseEvent) => {
+                // Ensure we don't open the PDF if clicking delete
+                if ((e.target as HTMLElement).closest('.delete-pdf-btn')) {
+                  return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (pdf.url) {
+                  window.open(pdf.url, '_blank');
+                  return;
+                }
+                if (pdf.fileData) {
+                  try {
+                    const parts = pdf.fileData.split(',');
+                    const byteString = atob(parts[1]);
+                    const mime = parts[0].split(':')[1].split(';')[0];
+                    
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) {
+                      ia[i] = byteString.charCodeAt(i);
+                    }
+                    const blob = new Blob([ab], { type: mime });
+                    const objectUrl = URL.createObjectURL(blob);
+                    window.open(objectUrl, '_blank');
+                  } catch (err) {
+                    console.error("Failed to open internal PDF securely using blob representation", err);
+                    const pdfWindow = window.open();
+                    if (pdfWindow) {
+                      pdfWindow.document.write(
+                        `<iframe src="${pdf.fileData}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`
+                      );
+                    }
+                  }
+                } else {
+                  alert(`Simulated opening/previewing file: ${pdf.fileName}`);
+                }
+              };
+
+              return (
+                <div 
+                  key={pdf.id} 
+                  onClick={handleOpenPdfFile}
+                  className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:border-blue-300 dark:hover:border-blue-900 transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-100 text-red-650 flex items-center justify-center shrink-0">
+                      <FileText className="w-5.5 h-5.5 text-red-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm font-sans leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        {pdf.title}
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1 font-mono flex flex-wrap items-center gap-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
+                          pdf.url ? 'bg-blue-100 dark:bg-blue-950/45 text-blue-600 dark:text-blue-400' : 'bg-emerald-100 dark:bg-emerald-950/45 text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          {pdf.url ? 'Web URL' : 'Local File'}
+                        </span>
+                        <span>
+                          {pdf.fileName} ({pdf.fileSize})
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-3 sm:mt-0 justify-end">
+                    {/* Preview Option Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPdfFile(e);
+                      }}
+                      className="px-3 py-1.5 text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805 transition-colors flex items-center gap-1 text-xs font-semibold uppercase tracking-wider font-mono border border-slate-200/50 dark:border-slate-705 cursor-pointer"
+                      title="Preview PDF File"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview</span>
+                    </button>
+
+                    {/* Open Option Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPdfFile(e);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold uppercase tracking-wider font-mono shadow-sm cursor-pointer"
+                      title="Open PDF File directly"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Open</span>
+                    </button>
+
+                    {/* Edit PDF Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartEdit(pdf, 'pdfs');
+                      }}
+                      className="p-2 text-slate-400 hover:text-blue-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/60 transition-colors cursor-pointer"
+                      title="Edit PDF / Link"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+
+                    {/* Delete PDF Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteItem(pdf.id, 'pdfs');
+                      }}
+                      className="delete-pdf-btn p-2 text-slate-400 hover:text-red-650 rounded-lg hover:bg-red-50 dark:hover:bg-red-955/20 transition-colors cursor-pointer"
+                      title="Delete PDF"
+                    >
+                      <Trash2 className="w-4.5 h-4.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {listPdfs.length === 0 && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in PDF files yet. Add one.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 3: Videos =============== */}
+        {activeTab === 'videos' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {listVideos.map(vid => {
+              // Extract YouTube ID if valid
+              let ytId = '';
+              try {
+                if (vid.url.includes('youtube.com/watch')) {
+                  const urlObj = new URL(vid.url);
+                  ytId = urlObj.searchParams.get('v') || '';
+                } else if (vid.url.includes('youtu.be/')) {
+                  ytId = vid.url.split('youtu.be/')[1]?.split('?')[0] || '';
+                }
+              } catch(e) {}
+
+              return (
+                <div key={vid.id} className="rounded-2xl border border-gray-150 dark:border-gray-850 overflow-hidden bg-white dark:bg-gray-950/50 flex flex-col justify-between shadow-xs relative group">
+                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button 
+                      onClick={() => handleStartEdit(vid, 'videos')}
+                      className="p-1.5 rounded-lg bg-gray-900/80 text-stone-300 hover:text-white transition-colors"
+                      title="Edit Video URL/Title"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteItem(vid.id, 'videos')}
+                      className="p-1.5 rounded-lg bg-gray-900/80 text-gray-400 hover:text-white transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Inline iframe embedded YouTube video player mockup or play button */}
+                  {ytId ? (
+                    <div className="aspect-video w-full bg-black relative">
+                      <iframe 
+                        title={vid.title}
+                        src={`https://www.youtube.com/embed/${ytId}`}
+                        className="absolute inset-0 w-full h-full border-0"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => window.open(vid.url, '_blank')}
+                      className="aspect-video bg-gray-900 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:bg-gray-855 transition-colors text-white"
+                    >
+                      <Play className="w-12 h-12 text-amber-500" />
+                      <span className="text-[10px] font-mono tracking-wider mt-2 text-gray-400 uppercase">External media link</span>
+                    </div>
+                  )}
+
+                  <div className="p-4">
+                    <h4 className="font-bold text-gray-900 dark:text-white text-sm font-sans line-clamp-1 leading-normal">
+                      {vid.title}
+                    </h4>
+                    <a 
+                      href={vid.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-gray-400 font-mono mt-1 hover:underline truncate block flex items-center gap-1"
+                    >
+                      <Link className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{vid.url}</span>
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+
+            {listVideos.length === 0 && (
+              <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in video resources yet. Pin and add a YouTube tutorial URL.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 4: Concepts =============== */}
+        {activeTab === 'concepts' && (
+          <div className="space-y-6">
+            {listConcepts.map(c => (
+              <div key={c.id} className="p-5 rounded-xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 relative group">
+                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => handleStartEdit(c, 'concepts')}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-amber-400 rounded bg-white dark:bg-gray-800 border border-slate-200 dark:border-slate-700"
+                    title="Edit Concept"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteItem(c.id, 'concepts')}
+                    className="p-1.5 text-gray-400 hover:text-red-600 rounded bg-white dark:bg-gray-800 border border-slate-200 dark:border-slate-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <h4 className="text-base font-bold text-gray-950 dark:text-white font-sans mr-8 leading-none">
+                  {c.title}
+                </h4>
+                <p className="text-sm text-gray-610 dark:text-gray-300 mt-2.5 leading-relaxed">
+                  {c.content}
+                </p>
+
+                {c.codeSnippet && (
+                  <pre className="mt-4 p-4 bg-gray-950 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto border border-gray-805">
+                    <code>{c.codeSnippet}</code>
+                  </pre>
+                )}
+              </div>
+            ))}
+
+            {listConcepts.length === 0 && !aiGenerating && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in concepts yet. Add or generate one.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 5: Coding =============== */}
+        {activeTab === 'coding' && (
+          <div className="space-y-6">
+            {listCoding.map(code => {
+              const showSol = revealSolutions[code.id];
+
+              return (
+                <div key={code.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 relative group">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <span className={`text-[10px] font-bold uppercase font-mono px-2 py-0.5 rounded-md border
+                      ${code.difficulty === 'easy' ? 'bg-emerald-100/10 border-emerald-500 text-emerald-500' : ''}
+                      ${code.difficulty === 'medium' ? 'bg-amber-100/10 border-amber-500 text-amber-500' : ''}
+                      ${code.difficulty === 'hard' ? 'bg-red-100/10 border-red-500 text-red-500' : ''}
+                    `}>
+                      {code.difficulty}
+                    </span>
+                    <button 
+                      onClick={() => handleStartEdit(code, 'coding')}
+                      className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-amber-400 rounded bg-white dark:bg-gray-850 opacity-0 group-hover:opacity-100 transition-opacity border border-slate-200 dark:border-slate-700"
+                      title="Edit Coding Challenge"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteItem(code.id, 'coding')}
+                      className="p-1 text-gray-400 hover:text-red-600 rounded bg-white dark:bg-gray-850 opacity-0 group-hover:opacity-100 transition-opacity border border-slate-200 dark:border-slate-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <h4 className="text-base font-bold text-gray-950 dark:text-white font-sans mr-24 leading-none">
+                    {code.title}
+                  </h4>
+
+                  <div className="text-sm text-gray-610 dark:text-gray-300 mt-4 leading-relaxed font-sans prose dark:prose-invert">
+                    {renderSimpleMarkdown(code.problemStatement)}
+                  </div>
+
+                  {code.starterCode && (
+                    <div className="mt-4">
+                      <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-gray-400">Starter Code Template:</span>
+                      <pre className="mt-1.5 p-4 bg-gray-950 text-gray-300 font-mono text-xs rounded-xl overflow-x-auto border border-gray-850">
+                        <code>{code.starterCode}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {code.solution && (
+                    <div className="mt-5 border-t border-gray-100 dark:border-gray-800 pt-4">
+                      <button
+                        onClick={() => setRevealSolutions({ ...revealSolutions, [code.id]: !showSol })}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-amber-650 dark:text-amber-500 hover:underline cursor-pointer"
+                      >
+                        {showSol ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <span>{showSol ? 'Hide Reference Solution' : 'Reveal Solution Logic'}</span>
+                      </button>
+
+                      {showSol && (
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-150">
+                          <pre className="p-4 bg-emerald-950/10 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto border border-emerald-500/15">
+                            <code>{code.solution}</code>
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {listCoding.length === 0 && !aiGenerating && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in coding challenges yet. Add or generate one.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 6: Interview =============== */}
+        {activeTab === 'interviews' && (
+          <div className="space-y-6">
+            {listInterviews.map(qa => {
+              const showAns = revealSolutions[qa.id];
+
+              return (
+                <div key={qa.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 relative group">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <span className="text-[9px] font-bold uppercase font-mono px-2 py-0.5 rounded-md bg-stone-100/10 text-stone-500 border border-stone-500">
+                      {qa.level} level
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => handleStartEdit(qa, 'interviews')}
+                      className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-amber-400 rounded bg-white dark:bg-gray-850 opacity-0 group-hover:opacity-100 transition-opacity border border-slate-200 dark:border-slate-700"
+                      title="Edit Interview Question"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => handleDeleteItem(qa.id, 'interviews')}
+                      className="p-1 text-gray-400 hover:text-red-500 rounded bg-white dark:bg-gray-850 opacity-0 group-hover:opacity-100 transition-opacity border border-slate-200 dark:border-slate-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <span className="text-[10px] font-bold text-amber-550 dark:text-amber-500 font-mono tracking-widest uppercase">Question Tag</span>
+                  <div className="text-base font-extrabold text-gray-900 dark:text-white mt-1 pr-24 font-sans leading-relaxed space-y-1">
+                    {renderSimpleMarkdown(qa.question, "text-base font-extrabold text-gray-900 dark:text-white font-sans leading-relaxed")}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80">
+                    <button
+                      onClick={() => setRevealSolutions({ ...revealSolutions, [qa.id]: !showAns })}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer"
+                    >
+                      {showAns ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      <span>{showAns ? 'Hide response walkthrough' : 'Reveal Suggested Response'}</span>
+                    </button>
+
+                    {showAns && (
+                      <div className="mt-3.5 p-4.5 bg-gray-50/60 dark:bg-gray-950/40 rounded-xl border border-gray-150 dark:border-gray-850 text-sm text-gray-650 dark:text-gray-300 leading-relaxed font-sans prose dark:prose-invert animate-in fade-in slide-in-from-top-1.5 duration-200">
+                        {renderSimpleMarkdown(qa.answer)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {listInterviews.length === 0 && !aiGenerating && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in interview sheets. Add or generate one.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =============== Tab 7: Quizzes (Quiz engine) =============== */}
+        {activeTab === 'quizzes' && (
+          <div className="space-y-8">
+            {listQuizzes.map((quiz, quizIdx) => {
+              const selectedIndex = quizAttempts[quiz.id];
+              const answered = selectedIndex !== undefined;
+              const isCorrect = answered && selectedIndex === quiz.correctIndex;
+
+              return (
+                <div key={quiz.id} className="p-6 rounded-2xl border border-gray-200 dark:border-gray-805 bg-white dark:bg-gray-950/40 relative group shadow-xs">
+                  <div className="flex items-center justify-between mb-4.5">
+                    <span className="text-[10px] font-bold font-mono tracking-widest text-[#4d4d4d] dark:text-gray-400 uppercase">
+                      Question {quizIdx + 1}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartEdit(quiz, 'quizzes');
+                        }}
+                        className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-amber-400 rounded bg-white dark:bg-gray-850 cursor-pointer border border-slate-200"
+                        title="Edit Quiz Question"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteItem(quiz.id, 'quizzes')}
+                        className="p-1 text-gray-400 hover:text-red-500 rounded bg-white dark:bg-gray-850 cursor-pointer border border-slate-200"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-base font-extrabold text-gray-950 dark:text-white font-sans leading-normal space-y-1">
+                    {renderSimpleMarkdown(quiz.question, "text-base font-extrabold text-gray-950 dark:text-white font-sans leading-normal")}
+                  </div>
+
+                  {/* MCQ Choices */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+                    {quiz.options.map((opt, optIdx) => {
+                      const isOptionSelected = selectedIndex === optIdx;
+                      const isCorrectOption = quiz.correctIndex === optIdx;
+
+                      let btnStyle = 'border-gray-200 dark:border-gray-855 hover:bg-gray-50 dark:hover:bg-gray-800/65 text-gray-700 dark:text-gray-300';
+                      
+                      if (answered) {
+                        if (isCorrectOption) {
+                          btnStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold';
+                        } else if (isOptionSelected) {
+                          btnStyle = 'border-red-500 bg-red-500/10 text-red-650 dark:text-red-450';
+                        } else {
+                          btnStyle = 'border-gray-150 dark:border-gray-850 text-gray-400 dark:text-gray-600 opacity-60';
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={optIdx}
+                          disabled={answered}
+                          onClick={() => setQuizAttempts({ ...quizAttempts, [quiz.id]: optIdx })}
+                          className={`px-4 py-3 rounded-xl border text-left text-xs sm:text-xs.5 leading-normal transition-all font-medium flex items-center justify-between
+                            ${btnStyle}
+                            ${!answered ? 'hover:scale-[1.01] hover:border-gray-320 cursor-pointer' : ''}
+                          `}
+                        >
+                          <span>{renderInlineFormat(opt)}</span>
+                          {answered && isCorrectOption && <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
+                          {answered && isOptionSelected && !isCorrectOption && <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Feedback summary explanation card */}
+                  {answered && (
+                    <div className="mt-5 p-4 bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 rounded-xl text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-sans animate-in fade-in slide-in-from-top-1.5 duration-200 text-left">
+                      <div className="flex items-center gap-1 text-[10px] font-bold font-mono tracking-widest text-amber-600 dark:text-amber-500 uppercase mb-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Mechanism explanation</span>
+                      </div>
+                      <div className="space-y-1">
+                        {renderSimpleMarkdown(quiz.explanation, "text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-sans")}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {listQuizzes.length === 0 && !aiGenerating && (
+              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                Nothing in quiz sheets yet. Add or generate one.
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+      )}
+
+      {/* Modern custom inline modals */}
+      {/* 1. Custom inline Subtopic editing modal */}
+      {editSubModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setEditSubModalOpen(false)} className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 animate-in fade-in zoom-in-95 duration-150">
+            <h4 className="font-extrabold text-lg text-slate-900 dark:text-white leading-tight mb-4 font-sans">
+              Edit Subtopic Metadata
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 font-mono">Subtopic Name</label>
+                <input
+                  type="text"
+                  value={editSubName}
+                  onChange={(e) => setEditSubName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-205 dark:border-slate-705 bg-white dark:bg-slate-950 text-slate-905 dark:text-white text-xs focus:outline-none font-sans"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 font-mono">Description</label>
+                <textarea
+                  value={editSubDesc}
+                  rows={3}
+                  onChange={(e) => setEditSubDesc(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-205 dark:border-slate-705 bg-white dark:bg-slate-950 text-slate-905 dark:text-white text-xs focus:outline-none font-sans"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-4 mt-5 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEditSubModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-white text-xs font-semibold uppercase tracking-wider font-mono transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateSubtopic(editSubName, editSubDesc)}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold uppercase tracking-wider font-mono shadow-md transition-all cursor-pointer"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Custom inline Subtopic deleting confirmation modal */}
+      {deleteSubConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setDeleteSubConfirmOpen(false)} className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-100 dark:bg-red-955/40 text-red-600 dark:text-red-400 rounded-2xl shrink-0 shadow-sm">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-lg text-slate-900 dark:text-white leading-tight font-sans">
+                  Delete subtopic?
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-sans">
+                  Are you sure you want to permanently delete <strong className="font-semibold text-slate-800 dark:text-slate-200">"{subtopic.name}"</strong>? This will remove all associated notes, coding files, quizzes, bookmarks, and transcripts instantly.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-4 mt-5 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteSubConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-805 text-xs font-semibold uppercase tracking-wider font-mono transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteSubtopic}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-semibold uppercase tracking-wider font-mono shadow-md transition-all cursor-pointer"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Custom inline Core concept adder modal */}
+      {addConceptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
+          <div onClick={() => setAddConceptOpen(false)} className="absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-805 shadow-xl p-6 animate-in fade-in zoom-in-95 duration-150">
+            <h4 className="font-extrabold text-lg text-slate-905 dark:text-white leading-tight mb-3 font-sans">
+              Add Key Item
+            </h4>
+            <input
+              type="text"
+              autoFocus
+              placeholder="e.g. Memory Lexical Scopes"
+              value={newConceptVal}
+              onChange={(e) => setNewConceptVal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddCoreConcept(newConceptVal);
+              }}
+              className="w-full px-3 py-2 rounded-xl border border-slate-205 dark:border-slate-705 bg-white dark:bg-slate-950 text-slate-905 dark:text-white text-xs focus:outline-none mb-4 font-sans"
+            />
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-150/45 dark:border-slate-800/45">
+              <button
+                type="button"
+                onClick={() => setAddConceptOpen(false)}
+                className="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-850 text-xs font-semibold transition font-sans cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCoreConcept(newConceptVal)}
+                className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-205 text-white dark:text-slate-950 text-xs font-bold shadow-xs cursor-pointer font-sans"
+              >
+                Add to List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Resource Addition Modals (Grid of options based on activeTab) */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setModalOpen(false)} className="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 overflow-y-auto max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white capitalize mb-4">
+              Add {activeTab === 'pdfs' ? 'PDF File' : activeTab === 'quizzes' ? 'Quiz Question' : activeTab}
+            </h3>
+
+            <form onSubmit={handleSaveManualItem} className="space-y-4">
+              
+              {/* Conditional Title or Question blocks */}
+              {activeTab === 'quizzes' ? (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-405 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Question Text
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Which keyword retains variables in closures?"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-405 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Give it a clear name"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Conditional Fields: PDFs Dropzone & Link options */}
+              {activeTab === 'pdfs' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-2 font-mono">
+                      PDF Addition Method
+                    </label>
+                    <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPdfSourceType('file');
+                          setPdfFileName('');
+                          setPdfFileSize('');
+                          setPdfFileData('');
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          pdfSourceType === 'file'
+                            ? 'bg-blue-600 text-white shadow'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Local File Upload
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPdfSourceType('url');
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          pdfSourceType === 'url'
+                            ? 'bg-blue-600 text-white shadow'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        PDF Link / URL Option
+                      </button>
+                    </div>
+                  </div>
+
+                  {pdfSourceType === 'file' ? (
+                    <div>
+                      <label className="block text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-2 font-mono">
+                        Select PDF File
+                      </label>
+                      <div 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-500/40 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-55 dark:hover:bg-slate-850/10 transition-all flex flex-col items-center justify-center bg-slate-50/10"
+                      >
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept="application/pdf"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                        <Upload className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2 animate-bounce" />
+                        {pdfFileName ? (
+                          <div>
+                            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono break-all">{pdfFileName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">{pdfFileSize} • Load successful</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Click to open file picker & upload a PDF file</p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-1">Saves file data locally</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-2 font-mono">
+                        PDF Link URL
+                      </label>
+                      <input
+                        type="url"
+                        required={pdfSourceType === 'url'}
+                        placeholder="https://example.com/syllabus.pdf"
+                        value={manualUrl}
+                        onChange={(e) => setManualUrl(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
+                      />
+                      <p className="text-[10px] text-slate-400 font-mono mt-1">Provide external hyperlink to save as reference</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Conditional Fields: Videos URL */}
+              {activeTab === 'videos' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-405 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Video Url
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://youtube.com/watch?v=..."
+                    value={manualUrl}
+                    onChange={(e) => setManualUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Conditional Fields: Custom Note, Concept content, or problem statement inputs */}
+              {(activeTab === 'notes' || activeTab === 'concepts' || activeTab === 'coding' || activeTab === 'interviews') && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-405 dark:text-gray-500 uppercase mb-2 font-mono">
+                    {activeTab === 'notes' ? 'Content (Markdown)' : activeTab === 'coding' ? 'Problem Statement (Markdown)' : 'Content/Explanation'}
+                  </label>
+                  <textarea
+                    required
+                    rows={activeTab === 'notes' ? 8 : 4}
+                    placeholder="Write detailed layout parameters..."
+                    value={activeTab === 'coding' ? codingProblem : manualContent}
+                    onChange={(e) => activeTab === 'coding' ? setCodingProblem(e.target.value) : setManualContent(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Specific Field: Code snippets trigger on Concepts */}
+              {activeTab === 'concepts' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-405 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Code Block (Optional)
+                  </label>
+                  <textarea
+                    rows={4}
+                    placeholder="Paste conceptual code syntax..."
+                    value={manualUrl} // reuse manualUrl as state
+                    onChange={(e) => setManualUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white font-mono text-xs focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Specific Field: Coding Challenge Difficulties & Solution template blocks */}
+              {activeTab === 'coding' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    {['easy', 'medium', 'hard'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setCodingDiff(level as any)}
+                        className={`py-2 rounded-xl border font-bold text-xs capitalize transition-all cursor-pointer
+                          ${codingDiff === level 
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-500' 
+                            : 'border-gray-200 dark:border-gray-800 text-gray-550'
+                          }
+                        `}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-gray-450 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Starter Code Skeletal
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="function solution() {\n  // Starter code here...\n}"
+                      value={codingStarter}
+                      onChange={(e) => setCodingStarter(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 font-mono text-xs text-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-gray-450 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Reference Answer Solution
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Actual syntax solution logic..."
+                      value={codingSol}
+                      onChange={(e) => setCodingSol(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 font-mono text-xs text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Specific Field: Seniority difficulty selector for Interview Q&As */}
+              {activeTab === 'interviews' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-420 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Seniority Level
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {['junior', 'mid', 'senior'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setCodingDiff(level as any)} // reuse codingDiff state
+                        className={`py-2 rounded-xl border font-bold text-xs capitalize transition-all cursor-pointer
+                          ${codingDiff === level 
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-500' 
+                            : 'border-gray-200 dark:border-gray-800 text-gray-550'
+                          }
+                        `}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific Field: Quiz Choices options */}
+              {activeTab === 'quizzes' && (
+                <div className="space-y-3 pt-2">
+                  <span className="text-[10px] font-bold tracking-wider uppercase font-mono text-gray-400">Quiz Choices options (provide 4):</span>
+                  {manualOption.map((opt, oIdx) => (
+                    <div key={oIdx} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setQuizCorrectIndex(oIdx)}
+                        className={`w-7 h-7 shrink-0 rounded-full border flex items-center justify-center font-mono font-bold text-xs transition-colors cursor-pointer
+                          ${quizCorrectIndex === oIdx 
+                            ? 'bg-emerald-500 border-transparent text-white' 
+                            : 'border-gray-200 dark:border-gray-850 text-gray-500'
+                          }
+                        `}
+                        title="Mark as correct answer"
+                      >
+                        {String.fromCharCode(65 + oIdx)}
+                      </button>
+                      <input
+                        type="text"
+                        required
+                        placeholder={`Option ${String.fromCharCode(65 + oIdx)}`}
+                        value={opt}
+                        onChange={(e) => {
+                          const copy = [...manualOption];
+                          copy[oIdx] = e.target.value;
+                          setManualOption(copy);
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white dark:bg-gray-950 text-xs text-gray-900 dark:text-white focus:outline-none"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold tracking-wider text-gray-420 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Logic Explanation
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      placeholder="Why is this option correct? (explains scope lookup mechanics, etc.)"
+                      value={quizExpl}
+                      onChange={(e) => setQuizExpl(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-xs text-gray-950 dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Form Controls submit/dismiss */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-805">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-gray-500 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-805 text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-905 text-sm font-semibold shadow-md cursor-pointer transition-all active:scale-98"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modern custom resource deletion confirmation dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setDeleteTarget(null)} className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-2xl shrink-0 shadow-sm">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-lg text-slate-900 dark:text-white leading-tight">
+                  Delete item?
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                  Are you sure you want to permanently delete <strong className="font-semibold text-slate-800 dark:text-slate-200">"{deleteTarget.title}"</strong> from your {deleteTarget.field} dashboard? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-4 mt-5 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-805 text-xs font-semibold uppercase tracking-wider font-mono transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeDeleteItem}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-semibold uppercase tracking-wider font-mono shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Universal Edit Item modal component */}
+      {editingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setEditingItem(null)} className="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl border border-slate-200 dark:border-gray-805 shadow-2xl p-6 overflow-y-auto max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white capitalize mb-4">
+              Edit {editingItem.field === 'pdfs' ? 'PDF File / Link' : editingItem.field === 'quizzes' ? 'Quiz Question' : editingItem.field === 'trackers' ? 'Topic Tracker' : editingItem.field}
+            </h3>
+
+            <form onSubmit={handleSaveEditItem} className="space-y-4">
+              
+              {/* Question / Title */}
+              {editingItem.field === 'quizzes' ? (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Question Text
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                    {editingItem.field === 'trackers' ? 'Interview Topic Title' : 'Title'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Conditional URL / Links for PDFs or Videos */}
+              {editingItem.field === 'pdfs' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-2 font-mono">
+                    PDF Link / URL Action
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/syllabus.pdf"
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-905 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/25 font-sans"
+                  />
+                  <p className="text-[10px] text-slate-400 font-mono mt-1">If blank, preserves the uploaded file data</p>
+                </div>
+              )}
+
+              {editingItem.field === 'videos' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Video Url
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://youtube.com/watch?v=..."
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Conditional Content box for notes, concepts, coding problems, interviews */}
+              {(editingItem.field === 'notes' || editingItem.field === 'concepts' || editingItem.field === 'coding' || editingItem.field === 'interviews') && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                    {editingItem.field === 'notes' ? 'Content (Markdown)' : editingItem.field === 'coding' ? 'Problem Statement (Markdown)' : 'Content/Explanation'}
+                  </label>
+                  <textarea
+                    required
+                    rows={editingItem.field === 'notes' ? 8 : 4}
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-slate-955 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
+                  />
+                </div>
+              )}
+
+              {/* Specific Field: Code block for concepts */}
+              {editingItem.field === 'concepts' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Code Snippet (Optional)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editCodeSnippet}
+                    onChange={(e) => setEditCodeSnippet(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-950 border border-slate-200 font-mono text-xs text-emerald-500 rounded-xl focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Specific fields for coding challenges */}
+              {editingItem.field === 'coding' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    {['easy', 'medium', 'hard'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setEditDifficulty(level as any)}
+                        className={`py-2 rounded-xl border font-bold text-xs capitalize transition-all cursor-pointer
+                          ${editDifficulty === level 
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-500' 
+                            : 'border-slate-200 dark:border-slate-800 text-slate-500'
+                          }
+                        `}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Starter Code Skeletal
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editStarterCode}
+                      onChange={(e) => setEditStarterCode(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 font-mono text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Reference Answer Solution
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editSolution}
+                      onChange={(e) => setEditSolution(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 font-mono text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Seniority difficulty level on Interview Q&As */}
+              {editingItem.field === 'interviews' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-gray-450 dark:text-gray-500 uppercase mb-2 font-mono">
+                    Seniority level
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {['junior', 'mid', 'senior'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setEditDifficulty(level as any)}
+                        className={`py-2 rounded-xl border font-bold text-xs capitalize transition-all cursor-pointer
+                          ${editDifficulty === level 
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-500' 
+                            : 'border-slate-200 dark:border-slate-800 text-slate-500'
+                          }
+                        `}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific fields for Topic Tracker items */}
+              {editingItem.field === 'trackers' && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditTrackerStarted(!editTrackerStarted)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                        editTrackerStarted 
+                          ? 'bg-blue-600 border-transparent text-white shadow-xs' 
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                      }`}
+                    >
+                      <input type="checkbox" checked={editTrackerStarted} readOnly className="pointer-events-none rounded" />
+                      <span>Started</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditTrackerCompleted(!editTrackerCompleted)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                        editTrackerCompleted 
+                          ? 'bg-emerald-600 border-transparent text-white shadow-xs' 
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                      }`}
+                    >
+                      <input type="checkbox" checked={editTrackerCompleted} readOnly className="pointer-events-none rounded" />
+                      <span>Completed</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditTrackerRevised(!editTrackerRevised)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                        editTrackerRevised 
+                          ? 'bg-violet-650 border-transparent text-white shadow-xs' 
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                      }`}
+                    >
+                      <input type="checkbox" checked={editTrackerRevised} readOnly className="pointer-events-none rounded" />
+                      <span>Revised</span>
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Personal Reminder Notes
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Focus most heavily on recursive closures memory leak patterns"
+                      value={editTrackerNotes}
+                      onChange={(e) => setEditTrackerNotes(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-805 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Specific fields for quizzes */}
+              {editingItem.field === 'quizzes' && (
+                <div className="space-y-4 pt-2">
+                  <span className="text-[10px] font-bold tracking-wider uppercase font-mono text-gray-400">Quiz Choices options:</span>
+                  {editOptions.map((opt, oIdx) => (
+                    <div key={oIdx} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditCorrectIndex(oIdx)}
+                        className={`w-7 h-7 shrink-0 rounded-full border flex items-center justify-center font-mono font-bold text-xs transition-colors cursor-pointer
+                          ${editCorrectIndex === oIdx 
+                            ? 'bg-emerald-500 border-transparent text-white' 
+                            : 'border-slate-200 dark:border-slate-800 text-gray-500'
+                          }
+                        `}
+                      >
+                        {String.fromCharCode(65 + oIdx)}
+                      </button>
+                      <input
+                        type="text"
+                        required
+                        value={opt}
+                        onChange={(e) => {
+                          const copy = [...editOptions];
+                          copy[oIdx] = e.target.value;
+                          setEditOptions(copy);
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-850 bg-white dark:bg-gray-950 text-xs text-gray-901 focus:outline-none"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold tracking-wider text-gray-410 dark:text-gray-500 uppercase mb-2 font-mono">
+                      Logic Explanation
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={editExplanation}
+                      onChange={(e) => setEditExplanation(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white dark:bg-gray-950 text-xs text-gray-950 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Actions submit/cancel */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-805">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 rounded-xl text-gray-500 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-805 text-sm font-medium transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-205 text-white dark:text-slate-950 text-sm font-semibold shadow-md cursor-pointer transition-all active:scale-98"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
