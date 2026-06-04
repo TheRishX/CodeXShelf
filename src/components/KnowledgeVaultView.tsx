@@ -122,6 +122,17 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
     }
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (currentStep === 1) {
+      if (validateStep1()) {
+        setCurrentStep(2);
+      }
+    } else {
+      handleSaveItem(e);
+    }
+  };
+
   const handleSaveItem = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -1083,179 +1094,248 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
 
       {/* Super Simple Step-by-Step popup wizard dialog */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-100">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-202 dark:border-slate-800 w-full max-w-lg shadow-2xl p-6 relative animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-blue-100 dark:border-blue-900/30 w-full max-w-xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.30)] p-8 relative animate-in zoom-in-95 duration-200 overflow-hidden">
             
+            {/* Background design elements for interactive/psychological delight */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-100/35 dark:bg-emerald-900/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+
             {/* Header Dialog */}
-            <div className="flex items-center justify-between border-b pb-3 mb-5 border-slate-100 dark:border-slate-805">
-              <div className="flex items-center gap-2">
-                <Bookmark className="w-5 h-5 text-blue-600" />
-                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
-                  {editingItem ? 'Update Bookmark' : 'Add Website Bookmark'}
-                </h3>
+            <div className="flex items-start justify-between pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-2.5 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-2xl">
+                    <Bookmark className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-lg tracking-tight">
+                      {editingItem ? '✏️ Edit Saved Link' : '✨ Add a Website Link'}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium pb-1.5">
+                      Save helpful websites, docs, or materials to access them from anywhere!
+                    </p>
+                  </div>
+                </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400 cursor-pointer"
+                className="p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-850 transition-all text-slate-405 hover:text-slate-600 dark:hover:text-white cursor-pointer border border-slate-100 dark:border-slate-800 shrink-0"
+                title="Close"
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Step progress indicators */}
-            <div className="flex items-center justify-center gap-1.5 mb-6">
-              {[1, 2].map(stepNum => (
-                <div key={stepNum} className="flex items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-all ${
-                    currentStep === stepNum
-                      ? 'bg-blue-600 text-white shadow-xs scale-105'
-                      : currentStep > stepNum
-                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/45'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                  }`}>
-                    {stepNum}
-                  </div>
-                  {stepNum < 2 && (
-                    <div className={`w-12 h-0.5 mx-1 transition-colors ${currentStep > stepNum ? 'bg-blue-500' : 'bg-slate-100 dark:bg-slate-800'}`} />
-                  )}
-                </div>
-              ))}
+            {/* Premium, Friendly Progress Tracker (Psychologically reassuring for age 12-60) */}
+            <div className="grid grid-cols-2 gap-3 mb-6 bg-slate-50 dark:bg-slate-950/40 p-2 rounded-2xl border border-slate-102 dark:border-slate-850">
+              <div 
+                className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center gap-2.5 justify-center ${
+                  currentStep === 1 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-slate-550 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850'
+                }`}
+                onClick={() => {
+                  if (currentStep === 2) {
+                    setCurrentStep(1);
+                  }
+                }}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                  currentStep === 1 ? 'bg-white text-blue-600' : 'bg-slate-200 dark:bg-slate-805 text-slate-600 dark:text-slate-350'
+                }`}>
+                  1
+                </span>
+                <span className="text-xs font-black tracking-tight">🌐 Link & Name</span>
+              </div>
+
+              <div 
+                className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center gap-2.5 justify-center ${
+                  currentStep === 2 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-slate-550 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850'
+                }`}
+                onClick={() => {
+                  if (currentStep === 1 && validateStep1()) {
+                    setCurrentStep(2);
+                  }
+                }}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                  currentStep === 2 ? 'bg-white text-blue-600' : 'bg-slate-200 dark:bg-slate-805 text-slate-600 dark:text-slate-350'
+                }`}>
+                  2
+                </span>
+                <span className="text-xs font-black tracking-tight">📂 Folder & Memoirs</span>
+              </div>
             </div>
 
             {/* Form Step flow */}
-            <form onSubmit={handleSaveItem} className="space-y-4">
+            <form onSubmit={handleFormSubmit} className="space-y-5">
               {formError && (
-                <div className="flex items-center gap-2 p-3.5 bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-300 text-xs font-semibold rounded-2xl border border-rose-105 dark:border-rose-900/30">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-2.5 p-4 bg-rose-50 text-rose-700 dark:bg-rose-955/20 dark:text-rose-300 text-xs font-semibold rounded-2xl border border-rose-100 dark:border-rose-900/30">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
                   <span>{formError}</span>
                 </div>
               )}
+
               {/* STEP 1: Url & Name */}
               {currentStep === 1 && (
-                <div className="space-y-4 animate-in slide-in-from-right-3 duration-100">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white">
-                      1. Copy & Paste Website Link (URL) *
-                    </h4>
-                    <p className="text-xs text-slate-400 font-medium">Any web address like google.com or github.com</p>
-                    <input
-                      type="text"
-                      required
-                      placeholder="example.com"
-                      value={url || ''}
-                      onChange={(e) => setUrl(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white"
-                      autoFocus
-                    />
+                <div className="space-y-4 animate-in slide-in-from-right-4 duration-150">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-605 dark:text-slate-300 block">
+                      🔗 Website Address (URL) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
+                        <Globe className="w-4.5 h-4.5" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="example.com or https://mycoolsite.org"
+                        value={url || ''}
+                        onChange={(e) => setUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleNextStep();
+                          }
+                        }}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-semibold rounded-2xl outline-none focus:border-blue-505 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder-slate-400"
+                        autoFocus
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      💡 Tip: Copy and paste the web link from your other browser tabs or type it in!
+                    </p>
                   </div>
 
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-805 dark:text-white">
-                      2. What name should we show? *
-                    </h4>
-                    <p className="text-xs text-slate-400 font-medium">Simple title to recognize it at a glance</p>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-605 dark:text-slate-300 block">
+                      🏷️ Website Name / Title <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. My Coding Notes"
+                      placeholder="e.g., Code Academy Tutorials, Chemistry Cheatsheet"
                       value={title || ''}
                       onChange={(e) => setTitle(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-955 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleNextStep();
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-slate-50/50 dark:bg-slate-955 border border-slate-202 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-semibold rounded-2xl outline-none focus:border-blue-505 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder-slate-400"
                     />
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      💡 Tip: Use a friendly name so you can search it easily later.
+                    </p>
                   </div>
                 </div>
               )}
 
               {/* STEP 2: Description, Category, Notes & Favorites */}
               {currentStep === 2 && (
-                <div className="space-y-4 animate-in slide-in-from-right-3 duration-100 max-h-[50vh] overflow-y-auto pr-1">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white">
-                      3. What is this website for? <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-1">Optional</span>
-                    </h4>
-                    <p className="text-xs text-slate-400 font-medium">Write a simple summary so you remember later</p>
-                    <textarea
-                      rows={2}
-                      placeholder="e.g. This has great videos explaining databases and microservices... (Optional)"
-                      value={description || ''}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-505 text-slate-900 dark:text-white resize-none"
-                      autoFocus
-                    />
-                  </div>
-
-                  <div className="space-y-1 border-t border-slate-50 dark:border-slate-850 pt-3">
-                    <h4 className="text-sm font-black text-slate-805 dark:text-white mb-2">
-                       4. Pick Category Folder <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-805 px-1.5 py-0.5 rounded ml-1">Optional</span>
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-4 animate-in slide-in-from-right-4 duration-150 max-h-[48vh] overflow-y-auto pr-1 select-none">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-605 dark:text-slate-300 block">
+                        📂 Choose a Folder (Category)
+                      </label>
+                      <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-450 font-bold">Recommended</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      Select where this link belongs to keep your dashboard clean & organized:
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-850">
                       {categoryOptions.map(cat => (
                         <button
                           key={cat}
                           type="button"
                           onClick={() => setCategory(category === cat ? '' : cat)}
-                          className={`px-3 py-2 text-xs font-bold rounded-xl border text-center transition-all cursor-pointer ${
+                          className={`px-3 py-2 text-[11px] font-bold rounded-xl border text-center transition-all cursor-pointer ${
                             category === cat
-                              ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
-                              : 'bg-white hover:bg-slate-55 border-slate-200 text-slate-600 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-350'
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                              : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300'
                           }`}
                         >
-                          {cat}
+                          📂 {cat}
                         </button>
                       ))}
                     </div>
+                    {category && (
+                      <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                        Selected Folder: <span className="underline font-black">{category}</span>
+                      </p>
+                    )}
                   </div>
 
-                  <div className="space-y-1 border-t border-slate-50 dark:border-slate-850 pt-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-black text-slate-805 dark:text-white">
-                        5. Add Learning Notes (Optional)
-                      </h4>
-                      <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-bold uppercase font-sans">Optional</span>
-                    </div>
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-605 dark:text-slate-300 block">
+                      ✍️ Simple Description / Memories
+                    </label>
                     <textarea
                       rows={2}
-                      placeholder="Add key commands, checklists, passwords, or study codes..."
+                      placeholder="e.g., This web tool lets me design schemas easily. Visited frequently for system design homework!"
+                      value={description || ''}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-semibold rounded-2xl outline-none focus:border-blue-505 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none placeholder-slate-400"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      💡 Tip: Write a quick note why you bookmarked this. Your future self will thank you!
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-605 dark:text-slate-300 block">
+                      📝 Key Commands / Quick Study Codes (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g., npm install package-name, key algorithms summary, password cheats or exam codes."
                       value={notes || ''}
                       onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-205 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-sm font-semibold outline-none focus:border-blue-500 text-slate-900 dark:text-white resize-none"
+                      className="w-full px-4 py-3 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-semibold rounded-2xl outline-none focus:border-blue-505 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none placeholder-slate-400"
                     />
                   </div>
 
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-850/60 flex items-center justify-between">
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50 to-amber-50/20 dark:from-amber-950/20 dark:to-transparent rounded-2xl border border-amber-100/50 dark:border-amber-900/30 flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <span className="text-xs font-black text-slate-800 dark:text-white block">
-                        Pin to Favorites
+                      <span className="text-xs font-bold text-slate-805 dark:text-slate-200 block">
+                        ⭐️ Pin as a Favorite Website Link
                       </span>
-                      <span className="text-[10px] text-slate-400 block font-medium">Keep it saved at the top of your list!</span>
+                      <span className="text-[10px] text-slate-405 dark:text-slate-500 block">Keeps this link permanently at the very top of your list!</span>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => setIsFavorite(prev => !prev)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center gap-1.5 ${
                         isFavorite
-                          ? 'bg-amber-500 border-amber-600 text-white'
-                          : 'bg-white border-slate-200 text-slate-600 hover:text-slate-800 dark:bg-slate-950 dark:border-slate-800/80 dark:text-slate-350'
+                          ? 'bg-amber-500 border-amber-600 text-white shadow-sm'
+                          : 'bg-white hover:bg-slate-50 border-slate-202 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300'
                       }`}
                     >
                       <Star className={`w-4 h-4 ${isFavorite ? 'fill-white text-white' : 'text-slate-400'}`} />
-                      <span>{isFavorite ? 'Starred' : 'No Star'}</span>
+                      <span>{isFavorite ? 'Starred' : 'Unstarred'}</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Wizard Nav buttons on modal foot */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              {/* Wizard Nav buttons on modal footer with absolute safety (Step 1 Next is type="button" to prevent submit) */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 mt-5">
                 {currentStep > 1 ? (
                   <button
                     type="button"
                     onClick={handlePrevStep}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-705 font-black rounded-xl text-xs transition-colors flex items-center gap-1 cursor-pointer dark:bg-slate-800 dark:text-slate-300"
+                    className="px-5 py-2.5 bg-slate-105 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 text-slate-700 font-extrabold rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Back</span>
+                    <span>Back to Step 1</span>
                   </button>
                 ) : (
                   <div />
@@ -1265,18 +1345,18 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-505 text-white font-black rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer ml-auto"
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 hover:-translate-y-0.5 transition-all flex items-center gap-1 cursor-pointer ml-auto"
                   >
-                    <span>Next</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Choose Category & Save (Step 2)</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer ml-auto"
+                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs shadow-md shadow-emerald-500/20 hover:shadow-emerald-500/35 hover:-translate-y-0.5 transition-all flex items-center gap-1 cursor-pointer ml-auto"
                   >
-                    <Check className="w-4 h-4" />
-                    <span>{editingItem ? 'Save Bookmark' : 'Add to Vault'}</span>
+                    <Check className="w-4.5 h-4.5" />
+                    <span>{editingItem ? '🎉 Save Updates!' : '🚀 Add to Vault!'}</span>
                   </button>
                 )}
               </div>
