@@ -13,6 +13,7 @@ import { AllInterviewsView } from './components/AllInterviewsView';
 import { AllQuizzesView } from './components/AllQuizzesView';
 import { AllPdfsView } from './components/AllPdfsView';
 import { KnowledgeVaultView } from './components/KnowledgeVaultView';
+import { AllAssignmentsView } from './components/AllAssignmentsView';
 import { Topic, Subtopic, DatabaseState, CustomUser } from './types';
 import { initialData } from './initialData';
 import { auth, db } from './firebase';
@@ -24,7 +25,7 @@ const LOCAL_STORAGE_USER_KEY = 'codexshelf_active_user_v1';
 const LOCAL_STORAGE_THEME_KEY = 'codexshelf_theme_preference_v1';
 
 import { 
-  Laptop
+  Laptop, BookOpen
 } from 'lucide-react';
 
 export default function App() {
@@ -500,6 +501,15 @@ export default function App() {
       );
     }
 
+    if (activeView === 'assignments') {
+      return (
+        <AllAssignmentsView
+          dbState={dbState}
+          onUpdateDb={handleUpdateDatabase}
+        />
+      );
+    }
+
     // Check if subtopic detailed route
     if (activeView.includes('::')) {
       const [topicId, subtopicId] = activeView.split('::');
@@ -573,6 +583,23 @@ export default function App() {
 
       {/* 2. Main study content canvas scroll board */}
       <main className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-8 md:py-12 relative">
+        {/* Floating Top Right Knowledge Vault Trigger */}
+        <div className="absolute top-4 right-4 md:top-6 md:right-8 z-30 flex items-center gap-3">
+          <button
+            onClick={() => setActiveView(activeView === 'vault' ? 'dashboard' : 'vault')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-2 border shadow-xs select-none cursor-pointer ${
+              activeView === 'vault'
+                ? 'bg-blue-600 hover:bg-blue-500 border-transparent text-white'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
+            }`}
+            title={activeView === 'vault' ? "Back to Dashboard" : "Open Knowledge Vault"}
+            id="knowledge-vault-trigger"
+          >
+            <BookOpen className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'vault' ? 'text-white' : 'text-blue-500 dark:text-blue-400'}`} />
+            <span className="hidden sm:inline">Knowledge Vault</span>
+          </button>
+        </div>
+
         <div className="max-w-5xl mx-auto">
           {renderWorkspace()}
         </div>

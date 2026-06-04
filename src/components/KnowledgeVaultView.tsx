@@ -1360,7 +1360,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                       <div className="flex items-center gap-1.5 w-full mr-2">
                         <input
                           type="text"
-                          value={editingCategoryInput}
+                          value={editingCategoryInput || ''}
                           onChange={(e) => setEditingCategoryInput(e.target.value)}
                           className="flex-1 px-2.5 py-1 text-xs border border-blue-400 bg-white dark:bg-slate-900 rounded-lg text-slate-900 dark:text-white font-bold outline-none"
                           placeholder="e.g. Code Tools"
@@ -1440,7 +1440,7 @@ export function KnowledgeVaultView({ dbState, onUpdateDb }: KnowledgeVaultViewPr
                 <input
                   type="text"
                   placeholder="e.g. System Design, Interview Preparation"
-                  value={newCategoryInput}
+                  value={newCategoryInput || ''}
                   onChange={(e) => setNewCategoryInput(e.target.value)}
                   className="flex-grow px-3 py-2 border border-slate-202 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-xs font-bold rounded-xl outline-none focus:border-blue-500 text-slate-900 dark:text-white"
                 />

@@ -217,22 +217,6 @@ export function Sidebar({
 
             <button
               onClick={() => {
-                onSelectView('vault');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'vault'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <BookOpen className="w-4.5 h-4.5" />
-              <span>Knowledge Vault</span>
-            </button>
-
-            <button
-              onClick={() => {
                 onSelectView('pdfs');
                 setMobileMenuOpen(false);
               }}
@@ -293,6 +277,25 @@ export function Sidebar({
             >
               <ClipboardCheck className="w-4.5 h-4.5" />
               <span>Topic Tracker</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onSelectView('assignments');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
+                ${activeView === 'assignments'
+                  ? 'bg-rose-500/10 dark:bg-rose-955/15 text-rose-600 dark:text-rose-400 border-rose-550 dark:border-rose-400 font-bold shadow-xs' 
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-rose-605/90'
+                }
+              `}
+            >
+              <Award className={`w-4.5 h-4.5 ${activeView === 'assignments' ? 'text-rose-650' : 'text-slate-450'}`} />
+              <span className="flex items-center justify-between w-full">
+                <span>Assignments</span>
+                <span className="text-[9px] bg-rose-500/15 dark:bg-rose-500/30 text-rose-600 dark:text-rose-450 px-1.5 py-0.5 rounded-full font-bold">HOT</span>
+              </span>
             </button>
           </div>
 

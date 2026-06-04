@@ -271,5 +271,27 @@ setInterval(leak, 100); // leakReference grows exponentially
     'Documentation',
     'AI',
     'Learning Resources'
+  ],
+  assignments: [
+    {
+      id: 'assignment-1',
+      title: 'Dynamic Programming & Knapsack Optimization',
+      description: 'Analyze subproblem recurrence relations and design space-optimized bottom-up formulations.',
+      paperUrl: 'https://images.semanticscholar.org/example-paper.pdf',
+      websiteUrl: 'https://leetcode.com/problems/01-matrix/',
+      status: 'In Progress',
+      notes: 'Cognitive check: Verify base cases with subproblem sizes 0 and 1 first to prevent boundary memory leaks.',
+      createdAt: '2026-05-15T09:00:00Z'
+    },
+    {
+      id: 'assignment-2',
+      title: 'Distributed System Consensus Fault Tolerance (Raft)',
+      description: 'Practice leader election timing thresholds, log replication, and safe state machines.',
+      paperUrl: 'https://raft.github.io/raft.pdf',
+      websiteUrl: 'https://raft.github.io/',
+      status: 'Awaiting Solution',
+      notes: 'Visualization represents an amazing neural anchor! Study the interactive visualization page closely.',
+      createdAt: '2026-06-01T15:30:05Z'
+    }
   ]
 };

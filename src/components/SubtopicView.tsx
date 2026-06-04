@@ -21,7 +21,7 @@ interface SubtopicViewProps {
   onDeleteSubtopic?: (subtopicId: string) => void;
 }
 
-type TabType = 'dashboard' | 'tracker' | 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes';
+type TabType = 'dashboard' | 'tracker' | 'pdfs' | 'notes' | 'videos' | 'concepts' | 'quizzes';
 
 interface TabItem {
   id: TabType;
@@ -35,8 +35,6 @@ const TABS: TabItem[] = [
   { id: 'notes', label: 'Notes', icon: FileCode },
   { id: 'videos', label: 'Videos', icon: Play },
   { id: 'concepts', label: 'Concepts', icon: Lightbulb },
-  { id: 'coding', label: 'Coding', icon: Code2 },
-  { id: 'interviews', label: 'Interview', icon: HelpCircle },
   { id: 'dashboard', label: 'Study Station', icon: Sparkles }
 ];
 
@@ -250,6 +248,17 @@ export function SubtopicView({
 
   // Topics tracker input states
   const [newTrackerTitle, setNewTrackerTitle] = useState('');
+  const [activeBoxFilter, setActiveBoxFilter] = useState<'all' | 'unseen' | 'learning' | 'recalling' | 'mastered'>('all');
+  const [isMdImportModalOpen, setIsMdImportModalOpen] = useState(false);
+  const [mdImportContent, setMdImportContent] = useState('');
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
+
+  const toggleNoteExpansion = (noteId: string) => {
+    setExpandedNotes(prev => ({
+      ...prev,
+      [noteId]: !prev[noteId]
+    }));
+  };
 
   // General Edit Item states
   const [editingItem, setEditingItem] = useState<{
@@ -365,6 +374,14 @@ export function SubtopicView({
   const listInterviews = dbState.interviews.filter(x => x.subtopicId === subtopicId);
   const listQuizzes = dbState.quizzes.filter(x => x.subtopicId === subtopicId);
   const listTrackers = (dbState.trackers || []).filter(x => x.subtopicId === subtopicId);
+  const filteredTrackers = listTrackers.filter(t => {
+    const confidence = t.confidence || 0;
+    if (activeBoxFilter === 'unseen') return confidence <= 30;
+    if (activeBoxFilter === 'learning') return confidence >= 40 && confidence <= 60;
+    if (activeBoxFilter === 'recalling') return confidence >= 70 && confidence <= 80;
+    if (activeBoxFilter === 'mastered') return confidence >= 90;
+    return true; // 'all'
+  });
 
   // Trigger copy handler
   const handleCopyText = (text: string, id: string) => {
@@ -912,15 +929,13 @@ export function SubtopicView({
                   </p>
                 </div>
 
-                {/* 3. Grid of 6 interactive cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                {/* 3. Grid of 4 interactive cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   {[
                     { id: 'test', title: 'INTERACTIVE TEST', desc: 'Quiz generated dynamically from notes', icon: HelpCircle, color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/5' },
                     { id: 'cards', title: 'FLASHCARD DECK', desc: 'Generate dynamic flip study notes', icon: FileCode, color: 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/5' },
                     { id: 'summary', title: 'TOPIC SUMMARY', desc: 'Synthesize code syntax cheat sheet', icon: FileText, color: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/5' },
-                    { id: 'roadmap', title: 'VISUAL ROADMAP', desc: 'Estimated steps to master concept', icon: Play, color: 'bg-violet-500/10 border-violet-500/20 text-violet-700 dark:text-violet-400 hover:bg-violet-500/5' },
-                    { id: 'faang', title: 'FAANG QUESTIONS', desc: 'Auto-generate interview sets', icon: Sparkles, color: 'bg-red-500/10 border-red-500/20 text-rose-700 dark:text-red-400 hover:bg-red-500/5' },
-                    { id: 'coding', title: 'CODING TASKS', desc: 'Generate new algorithm questions', icon: Code2, color: 'bg-teal-500/10 border-teal-500/20 text-teal-700 dark:text-teal-450 hover:bg-teal-500/5' }
+                    { id: 'roadmap', title: 'VISUAL ROADMAP', desc: 'Estimated steps to master concept', icon: Play, color: 'bg-violet-500/10 border-violet-500/20 text-violet-700 dark:text-violet-400 hover:bg-violet-500/5' }
                   ].map(card => {
                     const CardIcon = card.icon;
                     return (
@@ -1467,102 +1482,197 @@ export function SubtopicView({
           </div>
         )}
 
-        {/* Inner Content panels according to chosen tabs */}
-        
         {/* =============== Tab 0: Topics Tracker =============== */}
         {activeTab === 'tracker' && (
           <div className="space-y-6">
-            {/* Gamified summary panel */}
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-emerald-500/5 to-transparent border border-slate-200 dark:border-slate-805/70 text-slate-800 dark:text-slate-100 backdrop-blur-xs">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-lg font-bold font-sans flex items-center gap-2">
-                    <span className="text-xl">🏆</span>
-                    <span>High-Yield Interview Topics Masterboard</span>
+            {/* Intellectually Stimulating Gamified Psychological Dashboard */}
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-550/15 via-emerald-500/10 to-amber-500/5 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 shadow-sm relative overflow-hidden">
+              {/* Abstract decorative ambient shapes */}
+              <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full filter blur-2xl pointer-events-none -mr-16 -mt-16" />
+              <div className="absolute bottom-0 left-0 w-36 h-36 bg-blue-500/5 rounded-full filter blur-2xl pointer-events-none -ml-16 -mb-16" />
+
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 px-2.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 font-extrabold text-[10px] tracking-wider uppercase font-mono border border-teal-500/20">
+                      ⚡ Ebbinghaus Aligned
+                    </div>
+                    <span className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500">•</span>
+                    <span className="text-xs font-mono font-bold text-emerald-500 dark:text-emerald-400">Leitner System Ready</span>
+                  </div>
+                  <h4 className="text-xl font-bold font-sans tracking-tight text-slate-900 dark:text-white">
+                    Cognitive Consolidation Masterboard
                   </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Track your readiness, mark revisions, and rate your confidence for complex {subtopic.name} interview challenges.
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
+                    Combat active neural decay. Moving cards through physical retrieval filters locks complex engineering theory into long-term crystalline storage.
                   </p>
                 </div>
-                {/* Stats */}
-                <div className="grid grid-cols-3 gap-3 md:gap-4 font-mono text-center shrink-0">
-                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
-                    <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">{listTrackers.length}</div>
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Topics</div>
-                  </div>
-                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
-                    <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 font-bold">
-                      {listTrackers.length > 0 ? Math.round((listTrackers.filter(t => t.completed).length / listTrackers.length) * 100) : 0}%
+
+                {/* Cognitive Retention Stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-center shrink-0 w-full lg:w-auto">
+                  <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-2xl font-black text-rose-500 font-sans tracking-tight">
+                      {listTrackers.filter(t => (t.confidence || 0) <= 30).length}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Done</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-405 mt-0.5 font-bold">Unretained</div>
                   </div>
-                  <div className="bg-slate-100 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-205 dark:border-slate-800">
-                    <div className="text-xl font-extrabold text-amber-500">
-                      {listTrackers.filter(t => t.isPerfect).length}
+                  <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-2xl font-black text-amber-500 font-sans tracking-tight">
+                      {listTrackers.filter(t => (t.confidence || 0) >= 40 && (t.confidence || 0) <= 80).length}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 font-bold">Perfect</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-405 mt-0.5 font-bold">Active recall</div>
+                  </div>
+                  <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-2xl font-black text-emerald-500 font-sans tracking-tight">
+                      {listTrackers.filter(t => (t.confidence || 0) >= 90).length}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-405 mt-0.5 font-bold">Crystallized</div>
+                  </div>
+                  <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="text-2xl font-black text-indigo-500 dark:text-indigo-400 font-sans tracking-tight">
+                      {listTrackers.length > 0 ? Math.round((listTrackers.filter(t => t.revised).length / listTrackers.length) * 100) : 0}%
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-405 mt-0.5 font-bold">Self-Tested</div>
                   </div>
                 </div>
               </div>
 
-              {/* Progress Bar */}
+              {/* Progress and Psychological State Summary */}
               {listTrackers.length > 0 && (
-                <div className="mt-4.5">
-                  <div className="flex justify-between items-center text-[10px] font-bold font-mono tracking-wider text-slate-400 dark:text-slate-400 mb-1">
-                    <span>OVERALL READINESS AVERAGE</span>
-                    <span>
-                      {Math.round(listTrackers.reduce((acc, curr) => acc + (curr.confidence || 0), 0) / listTrackers.length)}% Confidence
-                    </span>
+                <div className="mt-5 pt-4 border-t border-slate-200/50 dark:border-slate-800/80">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center text-[10px] font-bold font-mono tracking-wider text-slate-500 dark:text-slate-400 gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 uppercase">
+                      <span>🧠 Overall Synapse Index:</span>
+                      <span className="text-slate-905 dark:text-teal-400 font-extrabold">
+                        {listTrackers.length > 0 ? Math.round(listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length) : 0}% Confidence
+                      </span>
+                    </div>
+                    <div className="text-amber-600 dark:text-amber-400 text-right">
+                      {listTrackers.length > 0 && (listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length) < 40 && "⚠️ Heavy mental decay hazard. Engage core retrieval review!"}
+                      {listTrackers.length > 0 && (listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length) >= 40 && (listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length) < 75 && "🌱 Synaptic pathways stabilizing. Reinforce with more coding!"}
+                      {listTrackers.length > 0 && (listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length) >= 75 && "🔥 Impeccable structural consolidation. Keep pushing!"}
+                    </div>
                   </div>
-                  <div className="h-2 w-full bg-slate-200 dark:bg-slate-800/80 rounded-full overflow-hidden">
+                  <div className="h-2.5 w-full bg-slate-200/80 dark:bg-slate-850 rounded-full overflow-hidden block">
                     <div 
-                      className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-300"
-                      style={{ width: `${Math.round(listTrackers.reduce((acc, curr) => acc + (curr.confidence || 0), 0) / listTrackers.length)}%` }}
+                      className="h-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500 transition-all duration-305"
+                      style={{ width: `${Math.round(listTrackers.reduce((s, curr) => s + (curr.confidence || 0), 0) / listTrackers.length)}%` }}
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Quick adding container inline */}
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newTrackerTitle.trim()) return;
-                const newTr: TrackerItem = {
-                  id: `tr-${Date.now()}`,
-                  subtopicId,
-                  title: newTrackerTitle.trim(),
-                  started: false,
-                  completed: false,
-                  revised: false,
-                  confidence: 30, // Default base confidence
-                  isPerfect: false,
-                  createdAt: new Date().toISOString()
-                };
-                onUpdateDb({ trackers: [...(dbState.trackers || []), newTr] });
-                setNewTrackerTitle('');
-              }}
-              className="flex items-center gap-2 p-3 bg-white dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800"
-            >
-              <input
-                type="text"
-                placeholder="💡 Add vital interview topic reminder... e.g., Retaining lexical environment memory leaks"
-                value={newTrackerTitle}
-                onChange={(e) => setNewTrackerTitle(e.target.value)}
-                className="flex-1 bg-transparent text-sm text-slate-905 dark:text-white placeholder-slate-400 outline-hidden focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold font-sans transition-colors shrink-0 cursor-pointer"
+            {/* Quick adding container inline along with the MD bulk parser button */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newTrackerTitle.trim()) return;
+                  const newTr: TrackerItem = {
+                    id: `tr-${Date.now()}`,
+                    subtopicId,
+                    title: newTrackerTitle.trim(),
+                    started: false,
+                    completed: false,
+                    revised: false,
+                    confidence: 10, // Default start at 10%
+                    isPerfect: false,
+                    createdAt: new Date().toISOString()
+                  };
+                  onUpdateDb({ trackers: [...(dbState.trackers || []), newTr] });
+                  setNewTrackerTitle('');
+                }}
+                className="flex-1 flex items-center gap-2 p-3 bg-white dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800"
               >
-                + Add Topic
+                <input
+                  type="text"
+                  placeholder="💡 Enter core concept to master... (e.g., Closure garbage collection leak patterns)"
+                  value={newTrackerTitle}
+                  onChange={(e) => setNewTrackerTitle(e.target.value)}
+                  className="flex-1 bg-transparent text-sm text-slate-905 dark:text-white placeholder-slate-400 outline-hidden focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold font-sans transition-colors shrink-0 cursor-pointer"
+                >
+                  + Add Topic
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => setIsMdImportModalOpen(true)}
+                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold font-sans flex items-center justify-center gap-2 transition shrink-0 cursor-pointer"
+                title="Bulk generate checklist of topics from a pasted Markdown / text file"
+              >
+                <ClipboardList className="w-4 h-4 text-emerald-500" />
+                <span>Import MD Checklist</span>
               </button>
-            </form>
+            </div>
+
+            {/* Beautiful Spaced Repetition Leitner Filters Row */}
+            <div className="flex flex-wrap items-center gap-2 pb-1 overflow-x-auto text-slate-800 dark:text-slate-100">
+              <button
+                type="button"
+                onClick={() => setActiveBoxFilter('all')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap border ${
+                  activeBoxFilter === 'all'
+                    ? 'bg-indigo-650 border-indigo-650 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                📥 Show All ({listTrackers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBoxFilter('unseen')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap border ${
+                  activeBoxFilter === 'unseen'
+                    ? 'bg-rose-500 border-rose-500 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-rose-500 dark:text-rose-400 border-rose-100 dark:border-rose-950/40 hover:bg-rose-50/40 dark:hover:bg-rose-950/25'
+                }`}
+              >
+                🔴 Box 1: Sensory Register ({listTrackers.filter(t => (t.confidence || 0) <= 30).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBoxFilter('learning')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap border ${
+                  activeBoxFilter === 'learning'
+                    ? 'bg-amber-550 border-amber-550 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-950/40 hover:bg-amber-50/40 dark:hover:bg-amber-950/25'
+                }`}
+              >
+                🟡 Box 2: Working Memory ({listTrackers.filter(t => (t.confidence || 0) >= 40 && (t.confidence || 0) <= 60).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBoxFilter('recalling')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap border ${
+                  activeBoxFilter === 'recalling'
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-950/40 hover:bg-blue-50/40 dark:hover:bg-blue-950/25'
+                }`}
+              >
+                🔵 Box 3: Active Retrieval ({listTrackers.filter(t => (t.confidence || 0) >= 70 && (t.confidence || 0) <= 80).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBoxFilter('mastered')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap border ${
+                  activeBoxFilter === 'mastered'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-950/40 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/25'
+                }`}
+              >
+                🟢 Box 4: Long-Term Memory ({listTrackers.filter(t => (t.confidence || 0) >= 90).length})
+              </button>
+            </div>
 
             {/* Topic Tracker List rendering */}
-            <div className="space-y-3.5">
-              {listTrackers.map(tr => {
+            <div className="space-y-4">
+              {filteredTrackers.map(tr => {
                 const handleToggleField = (field: 'started' | 'completed' | 'revised' | 'isPerfect') => {
                   const updated = (dbState.trackers || []).map(t => {
                     if (t.id === tr.id) {
@@ -1571,6 +1681,7 @@ export function SubtopicView({
                         updatedItem.confidence = 100;
                         updatedItem.completed = true;
                         updatedItem.started = true;
+                        updatedItem.revised = true;
                       }
                       return updatedItem;
                     }
@@ -1582,49 +1693,85 @@ export function SubtopicView({
                 const handleSliderChange = (val: number) => {
                   const updated = (dbState.trackers || []).map(t => {
                     if (t.id === tr.id) {
-                      return { ...t, confidence: val, isPerfect: val === 100 ? true : t.isPerfect };
+                      const updatedItem = { ...t, confidence: val, isPerfect: val === 100 ? true : t.isPerfect };
+                      if (val === 100) {
+                        updatedItem.completed = true;
+                        updatedItem.started = true;
+                        updatedItem.revised = true;
+                        updatedItem.isPerfect = true;
+                      }
+                      return updatedItem;
                     }
                     return t;
                   });
                   onUpdateDb({ trackers: updated });
                 };
 
+                // Dynamic Styling for Box stages
+                const score = tr.confidence || 0;
+                let cardColorClasses = '';
+                let boxBadgeLabel = '';
+                let boxBadgeColor = '';
+                let cognitiveReaction = '';
+
+                if (score <= 30) {
+                  cardColorClasses = 'border-l-4 border-l-rose-500 bg-rose-500/5 dark:bg-rose-500/5 border-slate-200 dark:border-slate-800';
+                  boxBadgeLabel = '🔴 Box 1: Sensory Stage';
+                  boxBadgeColor = 'text-rose-600 dark:text-rose-400 bg-rose-500/10 dark:bg-rose-500/10';
+                  cognitiveReaction = score <= 10 
+                    ? '💤 Blind spot. Please read this topic thoroughly before active coding.'
+                    : '🔍 Vaguely familiar, but would freeze under interview pressure.';
+                } else if (score <= 60) {
+                  cardColorClasses = 'border-l-4 border-l-amber-500 bg-amber-500/5 dark:bg-amber-500/5 border-slate-200 dark:border-slate-800';
+                  boxBadgeLabel = '🟡 Box 2: Working Memory';
+                  boxBadgeColor = 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/10';
+                  cognitiveReaction = '🌱 Concept understood. Working through active recall implementation details.';
+                } else if (score <= 80) {
+                  cardColorClasses = 'border-l-4 border-l-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/5 border-slate-200 dark:border-slate-800';
+                  boxBadgeLabel = '🔵 Box 3: Active Retrieval';
+                  boxBadgeColor = 'text-indigo-600 dark:text-indigo-400 bg-indigo-505/10 dark:bg-indigo-505/10';
+                  cognitiveReaction = '⚡ Strong concept grasp! Ready to model core structures without assistance.';
+                } else {
+                  cardColorClasses = 'border-l-4 border-l-emerald-500 bg-emerald-500/5 dark:bg-emerald-950/20 border-emerald-550/20 dark:border-emerald-550/10 shadow-sm shadow-emerald-500/5';
+                  boxBadgeLabel = '🟢 Box 4: Long-Term Storage';
+                  boxBadgeColor = 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500/20';
+                  cognitiveReaction = '🏆 Elite level retention! Ready to explain or lecture this on a whiteboard.';
+                }
+
                 return (
                   <div 
                     key={tr.id} 
-                    className={`p-4.5 rounded-2xl border transition-all hover:bg-slate-50/15 dark:hover:bg-slate-805/10 relative group flex flex-col gap-4
-                      ${tr.isPerfect 
-                        ? 'bg-emerald-500/10 border-emerald-500/25 dark:border-emerald-500/15' 
-                        : 'bg-white dark:bg-slate-950/20 border-slate-202 dark:border-slate-805'
-                      }
-                    `}
+                    className={`p-5 rounded-2xl border transition-all duration-200 hover:shadow-xs hover:border-slate-300 dark:hover:border-slate-700 relative group flex flex-col gap-4 ${cardColorClasses}`}
                   >
                     {/* Top Row: Title, Perfect Toggle, Delete */}
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1 select-none flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-normal font-sans">
+                      <div className="space-y-1.5 flex-1 select-none">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-lg ${boxBadgeColor}`}>
+                            {boxBadgeLabel}
+                          </span>
+                          
+                          <h4 className="text-base font-bold text-slate-900 dark:text-white leading-snug font-sans flex items-center gap-1.5">
                             {tr.title}
                           </h4>
-                          {tr.isPerfect && (
-                            <span className="inline-flex items-center gap-1 bg-emerald-500/10 dark:bg-emerald-500/20 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-extrabold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                              ⭐ Perfectly Perfect
-                            </span>
-                          )}
                         </div>
-                        {tr.notes && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-sans italic pr-6">
+                        {tr.notes ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-sans italic pl-1 border-l border-slate-200 dark:border-slate-800 mt-1">
                             "{tr.notes}"
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 italic pl-1 mt-0.5">
+                            No revision summary notes added yet.
                           </p>
                         )}
                       </div>
 
                       {/* Small actions */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => handleStartEdit(tr, 'trackers')}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/65 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           title="Edit Topic Details"
                         >
                           <Edit3 className="w-4 h-4" />
@@ -1635,7 +1782,7 @@ export function SubtopicView({
                             const filtered = (dbState.trackers || []).filter(t => t.id !== tr.id);
                             onUpdateDb({ trackers: filtered });
                           }}
-                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/65 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           title="Delete Topic Tracker"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1644,92 +1791,111 @@ export function SubtopicView({
                     </div>
 
                     {/* Middle Row: Progress and Checkbox Actions */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                      {/* Interactive checkboxes */}
-                      <div className="flex flex-wrap items-center gap-2 select-none">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleField('started')}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                            tr.started 
-                              ? 'bg-blue-600 border-transparent text-white shadow-xs' 
-                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          <input type="checkbox" checked={tr.started || false} readOnly className="pointer-events-none rounded text-blue-600 focus:ring-0" />
-                          <span>Started</span>
-                        </button>
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-center bg-slate-50/50 dark:bg-slate-900/40 p-4.5 rounded-xl border border-slate-150 dark:border-slate-800/80">
+                      {/* Immersive Cognitive Stages Roadmap */}
+                      <div className="xl:col-span-8 flex flex-col gap-2">
+                        <span className="text-[10px] uppercase font-mono tracking-wider font-extrabold text-slate-400 dark:text-slate-500">
+                          Cognitive Consolidation Progress:
+                        </span>
+                        
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleField('started')}
+                            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                              tr.started 
+                                ? 'bg-indigo-600 border-transparent text-white shadow-xs' 
+                                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                            title="Cognitive Stage 1: Encoding facts into working memory."
+                          >
+                            <input type="checkbox" checked={tr.started || false} readOnly className="pointer-events-none rounded text-indigo-650 focus:ring-0 w-3 h-3" />
+                            <span>1. Encoded</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleToggleField('completed')}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                            tr.completed 
-                              ? 'bg-emerald-600 border-transparent text-white shadow-xs' 
-                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          <input type="checkbox" checked={tr.completed || false} readOnly className="pointer-events-none rounded text-emerald-600 focus:ring-0" />
-                          <span>Completed</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleField('completed')}
+                            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                              tr.completed 
+                                ? 'bg-blue-600 border-transparent text-white shadow-xs' 
+                                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                            title="Cognitive Stage 2: Organizing and outlining principles."
+                          >
+                            <input type="checkbox" checked={tr.completed || false} readOnly className="pointer-events-none rounded text-blue-650 focus:ring-0 w-3 h-3" />
+                            <span>2. Restructured</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleToggleField('revised')}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                            tr.revised 
-                              ? 'bg-violet-650 border-transparent text-white shadow-xs' 
-                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          <input type="checkbox" checked={tr.revised || false} readOnly className="pointer-events-none rounded text-violet-600 focus:ring-0" />
-                          <span>Revised</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleField('revised')}
+                            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                              tr.revised 
+                                ? 'bg-violet-650 border-transparent text-white shadow-xs' 
+                                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                            title="Cognitive Stage 3: Self-testing active memory recall."
+                          >
+                            <input type="checkbox" checked={tr.revised || false} readOnly className="pointer-events-none rounded text-violet-650 focus:ring-0 w-3 h-3" />
+                            <span>3. Self-Tested</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleToggleField('isPerfect')}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                            tr.isPerfect 
-                              ? 'bg-amber-600 border-transparent text-white shadow-xs' 
-                              : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                          title="Mark as 100% Perfectly Perfect in this Topic!"
-                        >
-                          <span>⭐</span>
-                          <span>Perfect</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleField('isPerfect')}
+                            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                              tr.isPerfect 
+                                ? 'bg-emerald-600 border-transparent text-white shadow-xs' 
+                                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                            title="Cognitive Stage 4: Mastery locked into long-term crystalline storage."
+                          >
+                            <span>⭐</span>
+                            <span>4. Mastery Locked</span>
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Interactive Confidence Gauge selector */}
-                      <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/80 transition-colors">
-                        <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-slate-400 shrink-0">Clear Score:</span>
-                        <div className="flex-1 flex items-center gap-2">
+                      {/* Interactive Retention Gauge with real-time feedback */}
+                      <div className="xl:col-span-4 flex flex-col gap-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800/80">
+                        <div className="flex justify-between items-center text-[10px] font-bold font-mono tracking-wider text-slate-400 dark:text-slate-500">
+                          <span>STRENGTH INDEX:</span>
+                          <span className="text-slate-905 dark:text-indigo-400 font-extrabold">{score}%</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
                           <input
                             type="range"
                             min="0"
                             max="100"
                             step="10"
-                            value={tr.confidence || 0}
+                            value={score}
                             onChange={(e) => handleSliderChange(Number(e.target.value))}
-                            className="w-full accent-emerald-500 h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-ew-resize focus:outline-none"
+                            className="w-full accent-indigo-600 h-1.5 bg-slate-100 dark:bg-slate-850 rounded-lg appearance-none cursor-ew-resize focus:outline-none"
                           />
-                          <span className="text-xs font-bold font-mono tracking-tighter shrink-0 text-slate-700 dark:text-amber-400 w-10 text-right">
-                            {tr.confidence || 0}%
-                          </span>
                         </div>
                       </div>
                     </div>
+
+                    {/* Qualitative Brain reaction feedback */}
+                    <div className="text-[11px] text-slate-505 dark:text-slate-400 font-medium font-sans flex items-center gap-1.5">
+                      <span className="shrink-0 text-amber-500 font-bold">🧠 Reaction:</span>
+                      <span className="animate-in fade-in duration-200 italic">{cognitiveReaction}</span>
+                    </div>
+
                   </div>
                 );
               })}
 
-              {listTrackers.length === 0 && (
-                <div className="py-14 text-center">
-                  <div className="text-4xl text-slate-400 select-none">🗒️</div>
-                  <h4 className="mt-2.5 font-bold text-sm text-slate-700 dark:text-slate-300 font-sans">Topics Tracker is empty</h4>
+              {filteredTrackers.length === 0 && (
+                <div className="py-14 text-center bg-slate-50/20 dark:bg-slate-900/20 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                  <div className="text-4xl text-slate-400 select-none">🧠</div>
+                  <h4 className="mt-2.5 font-bold text-sm text-slate-700 dark:text-slate-300 font-sans">No topics found in this stage</h4>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto font-sans leading-normal">
-                    Type a high-yield interview topic in the form above. Map and checkbox-track your study status to ace interview questions!
+                    {activeBoxFilter === 'all' 
+                      ? 'No high-yield interview topics listed. Add some topics using the input box or Bulk Import Markdown checklist!'
+                      : `You have no topics sorted in the ${activeBoxFilter} Box state yet. Keep testing yourself and slide confidence scores to relocate items!`}
                   </p>
                 </div>
               )}
@@ -1740,43 +1906,72 @@ export function SubtopicView({
         {/* =============== Tab 1: Notes =============== */}
         {activeTab === 'notes' && (
           <div className="space-y-6">
-            {listNotes.map(note => (
-              <div key={note.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 dark:bg-gray-900/50 relative group">
-                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => handleCopyText(note.content, note.id)}
-                    className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-150 dark:border-gray-700 transition"
-                  >
-                    {copiedItem === note.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                  <button 
-                    onClick={() => handleStartEdit(note, 'notes')}
-                    className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-blue-600 dark:hover:text-blue-450 border border-gray-150 dark:border-gray-700 transition"
-                    title="Edit Note"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handleDeleteItem(note.id, 'notes')}
-                    className="p-1.5 rounded-lg bg-red-50 text-red-650 hover:text-red-750 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+            {listNotes.map(note => {
+              const isExpanded = !!expandedNotes[note.id];
+              return (
+                <div key={note.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 dark:bg-gray-900/50 relative group">
+                  <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyText(note.content, note.id);
+                      }}
+                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-150 dark:border-gray-700 transition"
+                    >
+                      {copiedItem === note.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartEdit(note, 'notes');
+                      }}
+                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-blue-600 dark:hover:text-blue-450 border border-gray-150 dark:border-gray-700 transition"
+                      title="Edit Note"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteItem(note.id, 'notes');
+                      }}
+                      className="p-1.5 rounded-lg bg-red-50 text-red-650 hover:text-red-750 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
 
-                <h4 className="text-lg font-bold text-gray-900 dark:text-white font-sans pr-14 leading-none">
-                  {note.title}
-                </h4>
-                <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-2">
-                  Modified: {new Date(note.updatedAt).toLocaleDateString()}
-                </div>
+                  {/* Header click-to-expand region */}
+                  <div 
+                    onClick={() => toggleNoteExpansion(note.id)}
+                    className="flex items-start gap-3.5 cursor-pointer select-none"
+                  >
+                    <div className="mt-0.5 shrink-0 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-500/10 dark:hover:bg-amber-500/10 transition-all duration-200">
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-amber-505 dark:text-amber-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base md:text-lg font-bold text-gray-900 dark:text-white font-sans pr-14 leading-tight group-hover:text-amber-505 dark:group-hover:text-amber-400 transition-colors">
+                        {note.title}
+                      </h4>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-1.5">
+                        Modified: {new Date(note.updatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Styled Markdown block */}
-                <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-800/80 prose dark:prose-invert max-w-none">
-                  {renderSimpleMarkdown(note.content)}
+                  {/* Styled Markdown block showing if expanded */}
+                  {isExpanded && (
+                    <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-800/80 prose dark:prose-invert max-w-none animate-in fade-in slide-in-from-top-2 duration-200">
+                      {renderSimpleMarkdown(note.content)}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {listNotes.length === 0 && !aiGenerating && (
               <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
@@ -2383,7 +2578,7 @@ export function SubtopicView({
               type="text"
               autoFocus
               placeholder="e.g. Memory Lexical Scopes"
-              value={newConceptVal}
+              value={newConceptVal || ''}
               onChange={(e) => setNewConceptVal(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleAddCoreConcept(newConceptVal);
@@ -2431,7 +2626,7 @@ export function SubtopicView({
                     type="text"
                     required
                     placeholder="e.g. Which keyword retains variables in closures?"
-                    value={manualTitle}
+                    value={manualTitle || ''}
                     onChange={(e) => setManualTitle(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
                   />
@@ -2445,7 +2640,7 @@ export function SubtopicView({
                     type="text"
                     required
                     placeholder="Give it a clear name"
-                    value={manualTitle}
+                    value={manualTitle || ''}
                     onChange={(e) => setManualTitle(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
                   />
@@ -2531,7 +2726,7 @@ export function SubtopicView({
                         type="url"
                         required={pdfSourceType === 'url'}
                         placeholder="https://example.com/syllabus.pdf"
-                        value={manualUrl}
+                        value={manualUrl || ''}
                         onChange={(e) => setManualUrl(e.target.value)}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                       />
@@ -2551,7 +2746,7 @@ export function SubtopicView({
                     type="url"
                     required
                     placeholder="https://youtube.com/watch?v=..."
-                    value={manualUrl}
+                    value={manualUrl || ''}
                     onChange={(e) => setManualUrl(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
                   />
@@ -2568,7 +2763,7 @@ export function SubtopicView({
                     required
                     rows={activeTab === 'notes' ? 8 : 4}
                     placeholder="Write detailed layout parameters..."
-                    value={activeTab === 'coding' ? codingProblem : manualContent}
+                    value={activeTab === 'coding' ? (codingProblem || '') : (manualContent || '')}
                     onChange={(e) => activeTab === 'coding' ? setCodingProblem(e.target.value) : setManualContent(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-sans"
                   />
@@ -2584,7 +2779,7 @@ export function SubtopicView({
                   <textarea
                     rows={4}
                     placeholder="Paste conceptual code syntax..."
-                    value={manualUrl} // reuse manualUrl as state
+                    value={manualUrl || ''} // reuse manualUrl as state
                     onChange={(e) => setManualUrl(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-gray-900 dark:text-white font-mono text-xs focus:outline-none"
                   />
@@ -2619,7 +2814,7 @@ export function SubtopicView({
                     <textarea
                       rows={3}
                       placeholder="function solution() {\n  // Starter code here...\n}"
-                      value={codingStarter}
+                      value={codingStarter || ''}
                       onChange={(e) => setCodingStarter(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 font-mono text-xs text-gray-900 dark:text-white"
                     />
@@ -2632,7 +2827,7 @@ export function SubtopicView({
                     <textarea
                       rows={3}
                       placeholder="Actual syntax solution logic..."
-                      value={codingSol}
+                      value={codingSol || ''}
                       onChange={(e) => setCodingSol(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 font-mono text-xs text-gray-900 dark:text-white"
                     />
@@ -2689,7 +2884,7 @@ export function SubtopicView({
                         type="text"
                         required
                         placeholder={`Option ${String.fromCharCode(65 + oIdx)}`}
-                        value={opt}
+                        value={opt || ''}
                         onChange={(e) => {
                           const copy = [...manualOption];
                           copy[oIdx] = e.target.value;
@@ -2708,7 +2903,7 @@ export function SubtopicView({
                       required
                       rows={2}
                       placeholder="Why is this option correct? (explains scope lookup mechanics, etc.)"
-                      value={quizExpl}
+                      value={quizExpl || ''}
                       onChange={(e) => setQuizExpl(e.target.value)}
                       className="w-full px-4 py-2 rounded-xl border border-gray-202 bg-white dark:bg-gray-950 text-xs text-gray-950 dark:text-white"
                     />
@@ -2961,12 +3156,13 @@ export function SubtopicView({
                       onClick={() => setEditTrackerStarted(!editTrackerStarted)}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
                         editTrackerStarted 
-                          ? 'bg-blue-600 border-transparent text-white shadow-xs' 
-                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                          ? 'bg-indigo-600 border-transparent text-white shadow-xs' 
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-205 dark:border-slate-800 hover:text-slate-900'
                       }`}
+                      title="Cognitive Stage 1: Encoding facts into working memory."
                     >
-                      <input type="checkbox" checked={editTrackerStarted} readOnly className="pointer-events-none rounded" />
-                      <span>Started</span>
+                      <input type="checkbox" checked={editTrackerStarted} readOnly className="pointer-events-none rounded text-indigo-650 focus:ring-0 w-3 h-3" />
+                      <span>1. Encoded</span>
                     </button>
 
                     <button
@@ -2974,12 +3170,13 @@ export function SubtopicView({
                       onClick={() => setEditTrackerCompleted(!editTrackerCompleted)}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
                         editTrackerCompleted 
-                          ? 'bg-emerald-600 border-transparent text-white shadow-xs' 
-                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                          ? 'bg-blue-600 border-transparent text-white shadow-xs' 
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-205 dark:border-slate-800 hover:text-slate-900'
                       }`}
+                      title="Cognitive Stage 2: Organizing and restructuring principles."
                     >
-                      <input type="checkbox" checked={editTrackerCompleted} readOnly className="pointer-events-none rounded" />
-                      <span>Completed</span>
+                      <input type="checkbox" checked={editTrackerCompleted} readOnly className="pointer-events-none rounded text-blue-650 focus:ring-0 w-3 h-3" />
+                      <span>2. Restructured</span>
                     </button>
 
                     <button
@@ -2988,11 +3185,12 @@ export function SubtopicView({
                       className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
                         editTrackerRevised 
                           ? 'bg-violet-650 border-transparent text-white shadow-xs' 
-                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-200 hover:text-slate-900'
+                          : 'bg-slate-50 dark:bg-slate-905 text-slate-500 border-slate-205 dark:border-slate-800 hover:text-slate-900'
                       }`}
+                      title="Cognitive Stage 3: Active memory recall practice."
                     >
-                      <input type="checkbox" checked={editTrackerRevised} readOnly className="pointer-events-none rounded" />
-                      <span>Revised</span>
+                      <input type="checkbox" checked={editTrackerRevised} readOnly className="pointer-events-none rounded text-violet-650 focus:ring-0 w-3 h-3" />
+                      <span>3. Self-Tested</span>
                     </button>
                   </div>
 
@@ -3075,6 +3273,204 @@ export function SubtopicView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk MD file / pasted list Topic Tracker import modal */}
+      {isMdImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            onClick={() => setIsMdImportModalOpen(false)} 
+            className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs duration-150 animate-in fade-in" 
+          />
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 md:p-8 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-800/60 mb-5 font-sans shrink-0">
+              <div>
+                <h3 className="font-sans font-bold text-lg md:text-xl text-slate-900 dark:text-white flex items-center gap-2">
+                  <ClipboardList className="w-5.5 h-5.5 text-emerald-500" />
+                  Bulk Import MD Checklist
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Pasted text or upload a Markdown file containing checklist or bulleted topics.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsMdImportModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drag & Drop File Upload + Paste Container */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 font-sans">
+              <div 
+                className="group relative border-2 border-dashed border-slate-200 hover:border-slate-350 dark:border-slate-800 dark:hover:border-slate-700 rounded-2xl p-4 transition-all text-center"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      if (event.target?.result) {
+                        setMdImportContent(event.target.result as string);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }
+                }}
+              >
+                <input
+                  type="file"
+                  id="md-file-input"
+                  accept=".md,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        if (event.target?.result) {
+                          setMdImportContent(event.target.result as string);
+                        }
+                      };
+                      reader.readAsText(file);
+                    }
+                  }}
+                />
+                <label 
+                  htmlFor="md-file-input"
+                  className="flex flex-col items-center justify-center cursor-pointer space-y-2 py-4"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Upload className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div className="text-xs">
+                    <span className="font-extrabold text-slate-700 dark:text-slate-200 hover:underline">Click to upload .md/.txt file</span>
+                    <span className="text-slate-400"> or drag and drop here</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">Supports standard .md checkboxes, bullets, numbered topics or raw lines</p>
+                </label>
+              </div>
+
+              {/* Paste area */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase font-mono">
+                  Paste Markdown / Checklist Contents:
+                </label>
+                <textarea
+                  placeholder={`### JavaScript Interview Topics\n- [ ] Lexical scoping and closure\n- [ ] Event loop and macro/microtasks\n- Prototype inheritance\n1. Promises and async/await`}
+                  rows={8}
+                  value={mdImportContent}
+                  onChange={(e) => setMdImportContent(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs leading-relaxed"
+                />
+              </div>
+
+              {/* Live Parsing Preview */}
+              {mdImportContent.trim().length > 0 && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase font-mono">
+                      Parsed Checklist Preview
+                    </span>
+                    <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-mono font-bold">
+                      {(() => {
+                        const parsed = mdImportContent.split(/\r?\n/).map(line => {
+                          let trimmed = line.trim();
+                          if (!trimmed) return '';
+                          if (trimmed.startsWith('#')) trimmed = trimmed.replace(/^#+\s+/, '');
+                          if (/^[*-]\s+\[[ xX]\]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*-]\s+\[[ xX]\]\s+/, '');
+                          else if (/^[*\-+]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*\-+]\s+/, '');
+                          else if (/^\d+[\s.)\-]+\s*/.test(trimmed)) trimmed = trimmed.replace(/^\d+[\s.)\-]+\s*/, '');
+                          trimmed = trimmed.replace(/^(\*\*|__|\*|_)+|(\*\*|__|\*|_)+$/g, '');
+                          return trimmed.trim();
+                        }).filter(it => it.length > 1);
+                        return `${parsed.length} items found`;
+                      })()}
+                    </span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 text-xs text-slate-600 dark:text-slate-400 font-sans border-t border-slate-100 dark:border-slate-800/40 pt-2 shrink-0">
+                    {mdImportContent.split(/\r?\n/).map((line, lIdx) => {
+                      let trimmed = line.trim();
+                      if (!trimmed) return null;
+                      if (trimmed.startsWith('#')) trimmed = trimmed.replace(/^#+\s+/, '');
+                      if (/^[*-]\s+\[[ xX]\]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*-]\s+\[[ xX]\]\s+/, '');
+                      else if (/^[*\-+]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*\-+]\s+/, '');
+                      else if (/^\d+[\s.)\-]+\s*/.test(trimmed)) trimmed = trimmed.replace(/^\d+[\s.)\-]+\s*/, '');
+                      trimmed = trimmed.replace(/^(\*\*|__|\*|_)+|(\*\*|__|\*|_)+$/g, '');
+                      trimmed = trimmed.trim();
+                      if (!trimmed || trimmed.length <= 1) return null;
+                      return (
+                        <div key={`preview-tr-${lIdx}`} className="flex items-center gap-2 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-150 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-100">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span className="truncate">{trimmed}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions Footer */}
+            <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-slate-100 dark:border-slate-800/60 shrink-0 font-sans">
+              <button
+                type="button"
+                onClick={() => setIsMdImportModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-150 dark:hover:bg-slate-800 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!mdImportContent.trim()}
+                onClick={() => {
+                  const lines = mdImportContent.split(/\r?\n/);
+                  const parsedList: string[] = [];
+                  for (let line of lines) {
+                    let trimmed = line.trim();
+                    if (!trimmed) continue;
+                    if (trimmed.startsWith('#')) trimmed = trimmed.replace(/^#+\s+/, '');
+                    if (/^[*-]\s+\[[ xX]\]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*-]\s+\[[ xX]\]\s+/, '');
+                    else if (/^[*\-+]\s+/.test(trimmed)) trimmed = trimmed.replace(/^[*\-+]\s+/, '');
+                    else if (/^\d+[\s.)\-]+\s*/.test(trimmed)) trimmed = trimmed.replace(/^\d+[\s.)\-]+\s*/, '');
+                    trimmed = trimmed.replace(/^(\*\*|__|\*|_)+|(\*\*|__|\*|_)+$/g, '');
+                    trimmed = trimmed.trim();
+                    if (trimmed && trimmed.length > 1) {
+                      parsedList.push(trimmed);
+                    }
+                  }
+
+                  if (parsedList.length > 0) {
+                    const newItems: TrackerItem[] = parsedList.map((title, idx) => ({
+                      id: `tr-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+                      subtopicId,
+                      title,
+                      started: false,
+                      completed: false,
+                      revised: false,
+                      confidence: 30, // default
+                      isPerfect: false,
+                      createdAt: new Date().toISOString()
+                    }));
+
+                    onUpdateDb({ trackers: [...(dbState.trackers || []), ...newItems] });
+                  }
+                  setMdImportContent('');
+                  setIsMdImportModalOpen(false);
+                }}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Bulk Generate Checklist</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

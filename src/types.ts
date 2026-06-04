@@ -110,6 +110,17 @@ export interface VaultItem {
   createdAt: string;
 }
 
+export interface AssignmentItem {
+  id: string;
+  title: string;
+  description: string;
+  paperUrl: string; // PDF / paper link
+  websiteUrl: string; // Web link where questions reside
+  status: 'Awaiting Solution' | 'In Progress' | 'Completed' | 'Perfected';
+  notes?: string;
+  createdAt: string;
+}
+
 export interface DatabaseState {
   topics: Topic[];
   subtopics: Subtopic[];
@@ -123,6 +134,7 @@ export interface DatabaseState {
   trackers?: TrackerItem[];
   vaultItems?: VaultItem[];
   vaultCategories?: string[];
+  assignments?: AssignmentItem[];
 }
 
 export interface CustomUser {
