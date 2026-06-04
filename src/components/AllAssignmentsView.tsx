@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Award, Sparkles, Plus, Search, Trash2, ExternalLink, FileText, Globe, 
   Calendar, Flame, CheckCircle2, TrendingUp, X, Check, Edit3, HelpCircle,
-  FileCode, Zap, BrainCircuit, Trophy, Star
+  FileCode, Zap, BrainCircuit, Trophy, Star, LayoutGrid, List, Menu
 } from 'lucide-react';
 import { DatabaseState, AssignmentItem } from '../types';
 
@@ -16,6 +16,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('grid');
   
   // Creation modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -242,28 +243,83 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
           />
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
-          <span className="text-xs font-bold font-mono tracking-wider text-slate-400 uppercase hidden md:inline">Filter:</span>
-          <div className="grid grid-cols-4 gap-1 w-full sm:w-auto bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-850">
-            {['all', 'Awaiting Solution', 'In Progress', 'Completed'].map((opt) => (
+        <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto shrink-0">
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold font-mono tracking-wider text-slate-400 uppercase hidden md:inline">Filter:</span>
+            <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-850">
+              {['all', 'Awaiting Solution', 'In Progress', 'Completed'].map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setFilterStatus(opt)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                    filterStatus === opt
+                      ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 shadow-2xs font-extrabold'
+                      : 'text-slate-450 dark:text-slate-500 hover:text-slate-705 dark:hover:text-slate-300'
+                  }`}
+                >
+                  {opt === 'all' ? 'All' : opt === 'Awaiting Solution' ? 'Awaiting' : opt === 'In Progress' ? 'Active' : 'Solved'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Visual Divider on desktop */}
+          <div className="hidden sm:block h-6 w-[1px] bg-slate-200 dark:bg-slate-800" />
+
+          {/* View Layout Switcher */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold font-mono tracking-wider text-slate-400 uppercase hidden lg:inline">Layout:</span>
+            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-850">
               <button
-                key={opt}
-                onClick={() => setFilterStatus(opt)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                  filterStatus === opt
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'grid'
                     ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 shadow-2xs font-extrabold'
-                    : 'text-slate-450 dark:text-slate-500 hover:text-slate-705 dark:hover:text-slate-300'
+                    : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
+                title="Grid Layout"
               >
-                {opt === 'all' ? 'All' : opt === 'Awaiting Solution' ? 'Awaiting' : opt === 'In Progress' ? 'Active' : 'Solved'}
+                <LayoutGrid className="w-4 h-4" />
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 shadow-2xs font-extrabold'
+                    : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+                title="List Layout"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('compact')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'compact'
+                    ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 shadow-2xs font-extrabold'
+                    : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+                title="Compact Layout"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Quest grid listing */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Quest grid/list/compact listing */}
+      <div className={
+        viewMode === 'grid'
+          ? "grid grid-cols-1 md:grid-cols-2 gap-6"
+          : viewMode === 'list'
+            ? "flex flex-col gap-6"
+            : "flex flex-col gap-3"
+      }>
         {filtered.map((item) => {
           let badgeColor = "bg-amber-500/10 text-amber-600 border-amber-500/20";
           let borderThick = "border-amber-400 dark:border-amber-500/40";
@@ -283,6 +339,241 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
             psyNote = "Synaptic mastery unlocked! Perfect schema constructed. You can confidently explain this to a peer.";
           }
 
+          // Compact View layout
+          if (viewMode === 'compact') {
+            return (
+              <div 
+                key={item.id}
+                className={`bg-white dark:bg-slate-900 border-l-4 ${borderThick} rounded-xl border border-slate-200/70 dark:border-slate-800/60 py-2.5 px-4 shadow-2xs relative flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all duration-150 hover:bg-slate-50/50 dark:hover:bg-slate-850/20 group`}
+              >
+                {/* Left side: Status badge + Title */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-extrabold font-mono tracking-wide uppercase border shrink-0 ${badgeColor}`}>
+                    {item.status === 'Awaiting Solution' ? 'Queue' : item.status === 'In Progress' ? 'solving' : item.status === 'Completed' ? 'solved' : 'Mastered'}
+                  </span>
+                  <h3 className="text-xs font-bold font-sans text-slate-800 dark:text-slate-100 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight truncate">
+                    {item.title}
+                  </h3>
+                  {item.notes && (
+                    <span className="text-[10px] text-amber-500 dark:text-amber-450 hidden lg:inline shrink-0 font-sans font-medium" title={item.notes}>
+                      💡 Notes
+                    </span>
+                  )}
+                </div>
+
+                {/* Right side: Links, micro synapser selector, actions */}
+                <div className="flex flex-wrap items-center gap-4 shrink-0 justify-between md:justify-end">
+                  {/* Tiny links */}
+                  <div className="flex items-center gap-1.5">
+                    {item.paperUrl && (
+                      <a
+                        href={item.paperUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 rounded-md text-rose-600 dark:text-rose-400 transition"
+                        title="View reference paper PDF"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    {item.websiteUrl && (
+                      <a
+                        href={item.websiteUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 rounded-md text-emerald-600 dark:text-emerald-400 transition"
+                        title="Open problems workspace"
+                      >
+                        <Globe className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Micro synapser controller */}
+                  <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-850/50">
+                    {([
+                      { id: 'Awaiting Solution', label: 'Q' },
+                      { id: 'In Progress', label: 'S' },
+                      { id: 'Completed', label: 'C' },
+                      { id: 'Perfected', label: 'M' }
+                    ] as const).map((stage) => {
+                      const isSelected = item.status === stage.id;
+                      let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
+                      if (isSelected) {
+                        if (stage.id === 'In Progress') activeBtnClass = "bg-rose-650 text-white shadow-2xs";
+                        else if (stage.id === 'Completed') activeBtnClass = "bg-blue-650 text-white shadow-2xs";
+                        else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-650 text-white shadow-2xs";
+                        else activeBtnClass = "bg-amber-650 text-white shadow-2xs";
+                      }
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => handleChangeStatus(item.id, stage.id)}
+                          className={`w-5 h-5 text-[8px] rounded-md font-extrabold font-mono transition-all duration-150 cursor-pointer ${
+                            isSelected ? activeBtnClass : 'text-slate-450 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-350'
+                          }`}
+                          title={`Switch to ${stage.id}`}
+                        >
+                          {stage.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-0.5 border-l border-slate-200 dark:border-slate-800 pl-2">
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-705 dark:hover:text-white transition cursor-pointer"
+                      title="Edit Quest"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-650 transition cursor-pointer"
+                      title="Retire Quest"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            );
+          }
+
+          // List View layout (Single stretch column)
+          if (viewMode === 'list') {
+            return (
+              <div 
+                key={item.id}
+                className={`bg-white dark:bg-slate-900 border-l-4 ${borderThick} rounded-2xl border-t border-r border-b border-slate-200/80 dark:border-slate-800/80 p-5 shadow-xs relative flex flex-col md:flex-row md:items-start justify-between gap-5 transition-all duration-200 hover:shadow-md group hover:translate-y-[-2px]`}
+              >
+                {/* Left Column: context */}
+                <div className="flex-1 space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono tracking-wider uppercase border ${badgeColor}`}>
+                      {item.status}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">Created: {new Date(item.createdAt || '').toLocaleDateString()}</span>
+                  </div>
+
+                  <h3 className="text-lg font-extrabold font-sans text-slate-800 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight">
+                    {item.title}
+                  </h3>
+
+                  {item.description && (
+                    <p className="text-xs text-slate-505 dark:text-slate-400 leading-relaxed bg-slate-50/50 dark:bg-slate-950 p-3 rounded-xl border border-slate-100 dark:border-slate-850/50">
+                      {item.description}
+                    </p>
+                  )}
+
+                  {item.notes && (
+                    <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-950/10 text-slate-650 dark:text-slate-350 px-3 py-2.5 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-semibold">
+                      💡 {item.notes}
+                    </p>
+                  )}
+                </div>
+
+                {/* Right Column: resources and actions */}
+                <div className="w-full md:w-80 shrink-0 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono tracking-wider text-slate-400 uppercase font-bold">Resources & Stage</span>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-450 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
+                        title="Edit Quest Details"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-650 transition-all cursor-pointer"
+                        title="Retire Quest"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Links Row */}
+                  {(item.paperUrl || item.websiteUrl) && (
+                    <div className="flex flex-col gap-2">
+                      {item.paperUrl && (
+                        <a
+                          href={item.paperUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center justify-between transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span className="text-xs font-sans text-slate-650 dark:text-slate-300 font-semibold truncate">View Reference Paper</span>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                        </a>
+                      )}
+
+                      {item.websiteUrl && (
+                        <a
+                          href={item.websiteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center justify-between transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Globe className="w-4 h-4 text-emerald-650 shrink-0" />
+                            <span className="text-xs font-sans text-slate-655 dark:text-slate-300 font-semibold truncate">Problems Workspace portal</span>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Stage Switcher */}
+                  <div className="p-1.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200/60 dark:border-slate-850/50">
+                    <span className="block text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">Synaptic Stage:</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {([
+                        { id: 'Awaiting Solution', label: 'Queue' },
+                        { id: 'In Progress', label: 'solving' },
+                        { id: 'Completed', label: 'solved' },
+                        { id: 'Perfected', label: 'Mastered' }
+                      ] as const).map((stage) => {
+                        const isSelected = item.status === stage.id;
+                        let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
+                        if (isSelected) {
+                          if (stage.id === 'In Progress') activeBtnClass = "bg-rose-600 text-white shadow-xs";
+                          else if (stage.id === 'Completed') activeBtnClass = "bg-blue-600 text-white shadow-xs";
+                          else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-600 text-white shadow-xs";
+                          else activeBtnClass = "bg-amber-600 text-white shadow-xs";
+                        }
+
+                        return (
+                          <button
+                            key={stage.id}
+                            onClick={() => handleChangeStatus(item.id, stage.id)}
+                            className={`py-1 rounded text-[9px] font-bold font-mono tracking-wide uppercase transition-all duration-155 cursor-pointer ${
+                              isSelected ? `${activeBtnClass} scale-102 font-extrabold` : 'text-slate-450 dark:text-slate-500 hover:text-slate-705 dark:hover:text-slate-300'
+                            }`}
+                          >
+                            {stage.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            );
+          }
+
+          // Default Grid View layout
           return (
             <div 
               key={item.id}
@@ -305,7 +596,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     </button>
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-955/25 text-slate-400 hover:text-rose-650 transition-all cursor-pointer"
                       title="Retire Quest"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -324,7 +615,6 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                 )}
 
 
-
                 {/* Conditional Double Core Resources Link Section */}
                 {(item.paperUrl || item.websiteUrl) && (
                   <div className={`grid gap-3 my-4 ${item.paperUrl && item.websiteUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -340,7 +630,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           <FileText className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[9px] font-mono uppercase text-rose-500 dark:text-rose-400 font-extrabold tracking-wider">Reference Paper</span>
+                          <span className="block text-[9px] font-mono uppercase text-rose-500 dark:text-rose-455 font-extrabold tracking-wider">Reference Paper</span>
                           <span className="text-[11px] font-sans text-slate-650 dark:text-slate-300 font-semibold truncate block">View PDF paper</span>
                         </div>
                         <ExternalLink className="w-3.5 h-3.5 text-slate-350 dark:text-slate-550 group-hover/btn:text-rose-550 ml-auto shrink-0 transition-colors" />
@@ -359,7 +649,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           <Globe className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[9px] font-mono uppercase text-emerald-600 dark:text-emerald-400 font-extrabold tracking-wider">Website Portal</span>
+                          <span className="block text-[9px] font-mono uppercase text-emerald-600 dark:text-emerald-455 font-extrabold tracking-wider">Website Portal</span>
                           <span className="text-[11px] font-sans text-slate-650 dark:text-slate-300 font-semibold truncate block">Go to problems</span>
                         </div>
                         <ExternalLink className="w-3.5 h-3.5 text-slate-350 dark:text-slate-555 ml-auto shrink-0 transition-colors" />
@@ -371,7 +661,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                 {/* Personal Epiphany Notes */}
                 {item.notes && (
                   <div className="space-y-1 mb-4 pt-1">
-                    <span className="text-[9px] font-mono font-extrabold tracking-wider text-slate-450 uppercase block">Epiphany & Edge Cases:</span>
+                    <span className="text-[9px] font-mono font-extrabold tracking-wider text-slate-455 uppercase block">Epiphany & Edge Cases:</span>
                     <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-950/10 text-slate-650 dark:text-slate-350 px-3 py-2.5 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-medium">
                       💡 {item.notes}
                     </p>
@@ -384,10 +674,10 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                 <span className="block text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-2">Advance Synaptic Stage:</span>
                 <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl">
                   {([
-                    { id: 'Awaiting Solution', label: 'Hold' },
-                    { id: 'In Progress', label: 'Solve' },
-                    { id: 'Completed', label: 'Check' },
-                    { id: 'Perfected', label: 'Master' }
+                    { id: 'Awaiting Solution', label: 'Queue' },
+                    { id: 'In Progress', label: 'solving' },
+                    { id: 'Completed', label: 'solved' },
+                    { id: 'Perfected', label: 'Mastered' }
                   ] as const).map((stage) => {
                     const isSelected = item.status === stage.id;
                     let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
@@ -577,7 +867,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   <div className="space-y-3">
                     <div className="grid grid-cols-4 gap-2 bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-200/60 dark:border-slate-800/60">
                       {([
-                        { id: 'Awaiting Solution', label: 'Hold / Queue', badge: 'bg-amber-500 text-white', desc: 'No solution yet' },
+                        { id: 'Awaiting Solution', label: 'Queue', badge: 'bg-amber-500 text-white', desc: 'No solution yet' },
                         { id: 'In Progress', label: 'solving', badge: 'bg-rose-500 text-white', desc: 'Fires synapses' },
                         { id: 'Completed', label: 'solved', badge: 'bg-blue-600 text-white', desc: 'Working schema' },
                         { id: 'Perfected', label: 'Mastered', badge: 'bg-emerald-600 text-white', desc: 'Peer-explainable' }
@@ -765,7 +1055,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   <div className="space-y-3">
                     <div className="grid grid-cols-4 gap-2 bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-200/60 dark:border-slate-800/60">
                       {([
-                        { id: 'Awaiting Solution', label: 'Hold / Queue', badge: 'bg-amber-500 text-white', desc: 'No solution yet' },
+                        { id: 'Awaiting Solution', label: 'Queue', badge: 'bg-amber-500 text-white', desc: 'No solution yet' },
                         { id: 'In Progress', label: 'solving', badge: 'bg-rose-500 text-white', desc: 'Fires synapses' },
                         { id: 'Completed', label: 'solved', badge: 'bg-blue-600 text-white', desc: 'Working schema' },
                         { id: 'Perfected', label: 'Mastered', badge: 'bg-emerald-600 text-white', desc: 'Peer-explainable' }
