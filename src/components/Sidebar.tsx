@@ -16,9 +16,7 @@ interface SidebarProps {
   onLogout: () => void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
-  syncing: boolean;
-  onManualSync: () => void;
-  offlineMode: boolean;
+  syncStatus: 'saving' | 'saved' | 'offline' | 'syncing' | 'reconnecting';
 }
 
 const AVAILABLE_ICONS = [
@@ -61,9 +59,7 @@ export function Sidebar({
   onLogout,
   isDarkMode,
   onToggleTheme,
-  syncing,
-  onManualSync,
-  offlineMode
+  syncStatus
 }: SidebarProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -164,20 +160,40 @@ export function Sidebar({
         </div>
 
         {/* Sync Status bar details */}
-        <div className="px-6 py-2 bg-slate-50 dark:bg-slate-800/20 border-b border-slate-200/80 dark:border-slate-800/40 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-1.5 font-mono">
-            <div className={`w-1.5 h-1.5 rounded-full ${offlineMode ? 'bg-amber-500' : 'bg-blue-600 animate-pulse'}`} />
-            <span>{offlineMode ? 'Offline Mode' : 'Cloud Synced'}</span>
+        <div className="px-6 py-2 bg-slate-50 dark:bg-slate-850/50 border-b border-slate-200/85 dark:border-slate-800/50 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+          <div className="flex items-center gap-2">
+            {syncStatus === 'saving' && (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Saving...</span>
+              </>
+            )}
+            {syncStatus === 'saved' && (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="font-semibold text-slate-705 dark:text-slate-350">Saved to Cloud</span>
+              </>
+            )}
+            {syncStatus === 'offline' && (
+              <>
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="font-semibold text-amber-600 dark:text-amber-500">Offline</span>
+              </>
+            )}
+            {syncStatus === 'syncing' && (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-indigo-505 animate-spin" />
+                <span className="font-semibold text-indigo-650 dark:text-indigo-400">Syncing...</span>
+              </>
+            )}
+            {syncStatus === 'reconnecting' && (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-amber-505 animate-spin" />
+                <span className="font-semibold text-amber-600 dark:text-amber-450">Reconnecting...</span>
+              </>
+            )}
           </div>
-          <button 
-            onClick={onManualSync}
-            disabled={syncing}
-            title="Sync state to cloud server"
-            className="flex items-center gap-1 hover:text-slate-900 dark:hover:text-white font-mono transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Syncing...' : 'Sync'}</span>
-          </button>
+          <span className="text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold">REALTIME</span>
         </div>
 
         {/* Navigation topics */}
