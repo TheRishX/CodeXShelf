@@ -45,57 +45,6 @@ export interface VideoItem {
   createdAt: string;
   isPlaying?: boolean;
   isCompleted?: boolean;
-  // Professional Enterprise metadata
-  description?: string;
-  thumbnail?: string;
-  duration?: string;          // ISO 8601 parsed e.g. "12:35"
-  durationSeconds?: number;   // Numeric sorting
-  channelTitle?: string;      // Channel Name
-  channelId?: string;
-  publishedAt?: string;       // Published Date
-  views?: number;             // Stat count representation
-  likes?: number;
-  comments?: number;
-  tags?: string[];
-  category?: string;
-  language?: string;
-  embeddable?: boolean;
-  privacyStatus?: string;
-  sourceId?: string;          // Origin YouTube source ID if imported via channel/playlist
-  lastSyncedAt?: string;
-}
-
-export interface YouTubeSource {
-  id: string;                 // URL playlist ID, channel ID or single hash
-  type: 'channel' | 'playlist' | 'video' | 'shorts';
-  title: string;
-  creatorName: string;
-  thumbnail: string;
-  thumbnailUrl?: string;      // Backwards compatibility alias
-  videoCount: number;
-  url: string;
-  syncMode: 'manual' | 'hourly' | 'daily' | 'weekly';
-  syncInterval?: string;      // Interval settings
-  totalImported?: number;     // Stats sync tracking representation
-  lastSyncedAt: string;
-  latestVideoId?: string;
-  importedAt: string;
-  subtopicId: string;         // Target subtopic ID
-}
-
-export interface YouTubeJob {
-  id: string;
-  sourceUrl: string;
-  sourceType: 'channel' | 'playlist' | 'video' | 'shorts';
-  title: string;
-  status: 'queued' | 'starting' | 'importing' | 'syncing' | 'completed' | 'failed' | 'paused_offline';
-  total: number;
-  imported: number;
-  remaining: number;
-  eta: string;
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ConceptItem {
@@ -188,8 +137,6 @@ export interface DatabaseState {
   vaultItems?: VaultItem[];
   vaultCategories?: string[];
   assignments?: AssignmentItem[];
-  youtubeSources?: YouTubeSource[];
-  youtubeJobs?: YouTubeJob[];
 }
 
 export interface CustomUser {
