@@ -3,7 +3,8 @@ import {
   Play, Search, Filter, Video, ExternalLink, Trash2, 
   Sparkles, Plus, AlertCircle, RefreshCw, Layers,
   X, ArrowLeft, ArrowRight, Check, Upload, Link, FileVideo,
-  Star, Tv, Flame, Trophy, CheckCircle2, Award, Loader2, GripVertical
+  Star, Tv, Flame, Trophy, CheckCircle2, Award, Loader2, GripVertical,
+  LayoutGrid, Grid, List, AlignJustify
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { DatabaseState, VideoItem, Subtopic, Topic } from '../types';
@@ -17,6 +18,8 @@ interface AllVideosViewProps {
 export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideosViewProps) {
   const { topics, subtopics } = dbState;
   const videos = dbState.videos || [];
+
+  const [viewMode, setViewMode] = useState<'grid' | 'small_grid' | 'list' | 'compact'>('grid');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('all');
@@ -578,6 +581,65 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
             ))}
           </select>
         </div>
+
+        {/* Layout Selectors */}
+        <div className="flex items-center border border-slate-200 dark:border-slate-805 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl gap-1 w-full sm:w-auto shrink-0 select-none">
+          <button
+            type="button"
+            onClick={() => setViewMode('grid')}
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              viewMode === 'grid'
+                ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+            title="Grid View"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Grid</span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setViewMode('small_grid')}
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              viewMode === 'small_grid'
+                ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+            title="Small Grid View"
+          >
+            <Grid className="w-3.5 h-3.5" />
+            <span>Small Grid</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              viewMode === 'list'
+                ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+            title="List View"
+          >
+            <List className="w-3.5 h-3.5" />
+            <span>List</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('compact')}
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              viewMode === 'compact'
+                ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+            title="Compact View"
+          >
+            <AlignJustify className="w-3.5 h-3.5" />
+            <span>Compact</span>
+          </button>
+        </div>
       </div>
 
       {/* Main interactive player if active */}
@@ -659,7 +721,15 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
       )}
 
       {/* Grid of gallery video cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+      <div className={
+        viewMode === 'grid'
+          ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6"
+          : viewMode === 'small_grid'
+            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+            : viewMode === 'list'
+              ? "flex flex-col gap-3.5"
+              : "flex flex-col gap-2"
+      }>
         {filteredVideos.map(vid => {
           const { sub, topic } = getSubtopicPath(vid.subtopicId);
           const isLocal = vid.url?.startsWith('local-video://');
@@ -670,6 +740,335 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
             ? 'placeholder'
             : (ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80');
 
+          if (viewMode === 'compact') {
+            return (
+              <div 
+                key={vid.id}
+                className={`bg-white dark:bg-slate-900 border ${
+                  vid.isPlaying 
+                    ? 'border-red-500 bg-red-500/[0.02] ring-2 ring-red-500/10' 
+                    : vid.isCompleted
+                      ? 'border-emerald-500/30'
+                      : 'border-slate-205 dark:border-slate-855'
+                } rounded-xl px-3 py-2 flex items-center justify-between gap-4 hover:border-slate-350 dark:hover:border-slate-700 transition-all shadow-3xs`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <button
+                    onClick={() => {
+                      if (playUrl) {
+                        handlePlayAndMark(vid.id, playUrl);
+                      }
+                    }}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                      vid.isPlaying 
+                        ? 'bg-red-550 text-white animate-pulse shadow-xs shadow-red-500/20' 
+                        : 'bg-slate-100 hover:bg-red-105 text-slate-500 hover:text-red-650 dark:bg-slate-800 dark:hover:bg-slate-950/40 dark:text-slate-300'
+                    }`}
+                  >
+                    <Play className="w-3 h-3 fill-current ml-0.5" />
+                  </button>
+
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate" title={vid.title}>
+                      {vid.title}
+                    </h4>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {sub && (
+                        <span className="text-[9px] font-mono text-slate-400 font-medium truncate max-w-[120px]">
+                          {sub.name}
+                        </span>
+                      )}
+                      <span className="text-[8px] bg-slate-100 dark:bg-slate-800 text-slate-550 dark:text-slate-400 px-1 py-0.2 rounded font-mono uppercase font-bold shrink-0">
+                        {isLocal ? 'Local' : 'Web'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* Simple Checkbox Toggle */}
+                  <button
+                    onClick={() => handleToggleComplete(vid.id)}
+                    className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${
+                      vid.isCompleted 
+                        ? 'bg-emerald-500 border-emerald-600 text-white' 
+                        : 'border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    {vid.isCompleted && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteItem(vid.id)}
+                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-md transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (viewMode === 'list') {
+            return (
+              <div 
+                key={vid.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", vid.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dragOverId !== vid.id) {
+                    setDragOverId(vid.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const dId = e.dataTransfer.setData("text/plain");
+                  handleReorder(dId, vid.id);
+                  setDragOverId(null);
+                }}
+                className={`bg-white dark:bg-slate-900 border ${
+                  vid.isPlaying 
+                    ? 'border-red-500/80 ring-3 ring-red-500/10' 
+                    : dragOverId === vid.id
+                      ? 'border-blue-500 ring-4 ring-blue-500/10'
+                      : vid.isCompleted 
+                        ? 'border-emerald-500/30'
+                        : 'border-slate-205 dark:border-slate-855'
+                } rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs transition-all duration-200`}
+              >
+                <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-slate-400 p-0.5 shrink-0">
+                    <GripVertical className="w-4 h-4" />
+                  </div>
+                  
+                  <div className="relative w-32 aspect-video rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-950 shrink-0 border border-slate-200/60 dark:border-slate-800/80">
+                    {thumbUrl === 'placeholder' ? (
+                      <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-slate-850 to-red-950/80 flex items-center justify-center p-2 text-white text-center">
+                        <FileVideo className="w-5 h-5 text-rose-500" />
+                      </div>
+                    ) : (
+                      <img 
+                        src={thumbUrl} 
+                        alt={vid.title} 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <button
+                      onClick={() => {
+                        if (playUrl) {
+                          handlePlayAndMark(vid.id, playUrl);
+                        }
+                      }}
+                      className="absolute inset-0 bg-black/40 hover:bg-black/65 flex items-center justify-center text-white transition-all rounded-xl"
+                    >
+                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                    </button>
+                    {vid.isCompleted && (
+                      <div className="absolute top-1.5 left-1.5 bg-emerald-500 text-white rounded-full p-0.5">
+                        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-1 text-left">
+                    <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                      {sub && topic ? (
+                        <button
+                          onClick={() => onOpenSubtopic(topic.id, sub.id)}
+                          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 font-bold font-mono tracking-wide transition-colors truncate"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: topic.color }} />
+                          <span>{topic.name}</span>
+                          <span className="text-slate-440 font-sans">➔</span>
+                          <span className="underline truncate">{sub.name}</span>
+                        </button>
+                      ) : (
+                        <span className="text-[9px] text-slate-450 font-mono font-bold uppercase">Curated Resource</span>
+                      )}
+                      <span className="text-slate-400 font-mono font-medium">
+                        {new Date(vid.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
+                      </span>
+                    </div>
+                    
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate" title={vid.title}>
+                      {vid.title}
+                    </h4>
+                    
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-mono text-slate-400 font-semibold uppercase">
+                        {isLocal ? 'Local Storage' : (vid.platform === 'youtube' ? 'YouTube' : 'Web Link')}
+                      </span>
+                      {!isLocal && (
+                        <button
+                          onClick={() => handlePlayAndMark(vid.id, undefined, true, vid.url)}
+                          className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-650 dark:hover:text-blue-400 font-bold font-mono transition-all"
+                        >
+                          <span>Open Source</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 shrink-0 mt-2 sm:mt-0 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      if (playUrl) {
+                        handlePlayAndMark(vid.id, playUrl);
+                      }
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      vid.isPlaying 
+                        ? 'bg-red-650 text-white shadow-xs' 
+                        : 'bg-slate-105 hover:bg-red-50 text-slate-855 hover:text-red-700 dark:bg-slate-800 dark:hover:bg-red-950/20 dark:text-slate-300'
+                    }`}
+                  >
+                    {vid.isPlaying ? 'Playing' : 'Play'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleComplete(vid.id);
+                    }}
+                    className={`relative w-9 h-5 rounded-full transition-all duration-155 focus:outline-none cursor-pointer border ${
+                      vid.isCompleted ? 'bg-emerald-500 border-emerald-600' : 'bg-slate-205 dark:bg-slate-805 border-slate-300 dark:border-slate-750'
+                    }`}
+                  >
+                    <div
+                      className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transform transition-transform duration-155 ${
+                        vid.isCompleted ? 'translate-x-[14px]' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteItem(vid.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (viewMode === 'small_grid') {
+            return (
+              <div 
+                key={vid.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", vid.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dragOverId !== vid.id) {
+                    setDragOverId(vid.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const dId = e.dataTransfer.setData("text/plain");
+                  handleReorder(dId, vid.id);
+                  setDragOverId(null);
+                }}
+                className={`bg-white dark:bg-slate-900 border ${
+                  vid.isPlaying 
+                    ? 'border-red-500/80 ring-2 ring-red-500/10' 
+                    : dragOverId === vid.id
+                      ? 'border-blue-500 ring-4 ring-blue-500/10'
+                      : vid.isCompleted 
+                        ? 'border-emerald-500/20'
+                        : 'border-slate-200 dark:border-slate-805'
+                } rounded-2xl overflow-hidden group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs hover:shadow-2xs transition-all duration-250 flex flex-col text-left relative cursor-grab active:cursor-grabbing`}
+              >
+                {/* Small compact thumbnail area */}
+                <div className="relative aspect-video bg-slate-100 dark:bg-slate-950 overflow-hidden shrink-0 flex items-center justify-center text-center">
+                  {thumbUrl === 'placeholder' ? (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 to-red-950/80 flex flex-col items-center justify-center p-2 text-white">
+                      <FileVideo className="w-6 h-6 text-rose-500" />
+                      <span className="text-[8px] font-mono opacity-85">Local Video</span>
+                    </div>
+                  ) : (
+                    <img 
+                      src={thumbUrl} 
+                      alt={vid.title} 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  
+                  {/* Circle Center video trigger */}
+                  <button
+                    onClick={() => {
+                      if (playUrl) {
+                        handlePlayAndMark(vid.id, playUrl);
+                      }
+                    }}
+                    className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full ${
+                      vid.isPlaying 
+                        ? 'bg-red-650 text-white' 
+                        : 'bg-black/50 hover:bg-red-600 text-white hover:scale-110'
+                    } flex items-center justify-center transition-all duration-200 cursor-pointer`}
+                  >
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                  </button>
+
+                  <span className="absolute bottom-1 right-1 bg-black/75 text-[7px] font-mono tracking-wider font-bold text-white px-1.5 py-0.2 rounded uppercase">
+                    {isLocal ? 'Local' : (vid.platform === 'youtube' ? 'YT' : 'Web')}
+                  </span>
+                </div>
+
+                {/* compact text details */}
+                <div className="p-3 flex-1 flex flex-col justify-between gap-2">
+                  <div className="space-y-1 min-w-0 text-left">
+                    <div className="flex items-center justify-between text-[8px] text-slate-400 gap-1.5">
+                      <span className="truncate max-w-[70%] font-mono uppercase font-bold">{sub ? sub.name : 'Lecture'}</span>
+                      <span className="shrink-0">{new Date(vid.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                    </div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug" title={vid.title}>
+                      {vid.title}
+                    </h4>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-slate-100 dark:border-slate-850/60 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleToggleComplete(vid.id)}
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                        vid.isCompleted 
+                          ? 'bg-emerald-500 border-emerald-600 text-white' 
+                          : 'border-slate-300 dark:border-slate-700 hover:border-slate-404'
+                      }`}
+                    >
+                      {vid.isCompleted && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteItem(vid.id)}
+                      className="p-1 text-slate-404 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Default full Grid View Option
           return (
             <div 
               key={vid.id}
@@ -688,7 +1087,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                const dId = e.dataTransfer.getData("text/plain");
+                const dId = e.dataTransfer.setData("text/plain");
                 handleReorder(dId, vid.id);
                 setDragOverId(null);
               }}
@@ -733,7 +1132,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   <img 
                     src={thumbUrl} 
                     alt={vid.title} 
-                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-505"
                     referrerPolicy="no-referrer"
                   />
                 )}
@@ -778,7 +1177,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     {sub && topic ? (
                       <button
                         onClick={() => onOpenSubtopic(topic.id, sub.id)}
-                        className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 text-[10px] font-bold font-mono tracking-wide transition-colors truncate"
+                        className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-404 text-[10px] font-bold font-mono tracking-wide transition-colors truncate"
                       >
                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: topic.color }} />
                         <span>{topic.name}</span>
@@ -786,10 +1185,10 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                         <span className="underline truncate">{sub.name}</span>
                       </button>
                     ) : (
-                      <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider">Curated Resource</span>
+                      <span className="text-[9px] text-slate-405 font-mono font-bold uppercase tracking-wider">Curated Resource</span>
                     )}
 
-                    <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                    <span className="text-[9px] text-slate-405 font-mono shrink-0">
                       {new Date(vid.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
                     </span>
                   </div>
@@ -800,7 +1199,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                 </div>
 
                 {/* Tactile Watch-Complete switch slider */}
-                <div className="bg-slate-55/70 dark:bg-slate-950/40 p-2.5 rounded-2xl border border-slate-155 dark:border-slate-850 flex items-center justify-between">
+                <div className="bg-slate-55/70 dark:bg-slate-950/40 p-2.5 rounded-2xl border border-slate-155 dark:border-slate-855 flex items-center justify-between">
                   <div className="space-y-0.5">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-450 dark:text-slate-550 block leading-none select-none">
                       Complete Watch
@@ -849,7 +1248,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     className={`w-full py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
                       vid.isPlaying 
                         ? 'bg-red-600 text-white shadow-md shadow-red-600/20 ring-2 ring-red-400/30' 
-                        : 'bg-slate-50 hover:bg-red-50 text-slate-855 hover:text-red-700 dark:bg-slate-800/50 dark:hover:bg-red-950/20 dark:text-slate-300 dark:hover:text-red-400 border border-slate-100 dark:border-slate-850 hover:border-red-150 dark:hover:border-red-900/40'
+                        : 'bg-slate-50 hover:bg-red-50 text-slate-855 hover:text-red-700 dark:bg-slate-800/50 dark:hover:bg-red-950/20 dark:text-slate-300 dark:hover:text-red-400 border border-slate-100 dark:border-slate-855 hover:border-red-150 dark:hover:border-red-900/40'
                     }`}
                   >
                     {vid.isPlaying ? (
@@ -865,7 +1264,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     )}
                   </button>
 
-                  <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-850 pt-2 text-[10px] text-slate-400">
+                  <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-850 pt-2 text-[10px] text-slate-404">
                     {isLocal ? (
                       <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 dark:text-slate-500 font-bold">
                         Offline Ready
@@ -897,11 +1296,11 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
         {filteredVideos.length === 0 && (
           <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-205 dark:border-slate-855 rounded-3xl bg-slate-50/10">
-            <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-            <p className="text-slate-500 dark:text-slate-400 font-sans font-medium text-sm">
+            <AlertCircle className="w-10 h-10 text-slate-405 mx-auto mb-3" />
+            <p className="text-slate-500 dark:text-slate-404 font-sans font-medium text-sm">
               No educational links or lecture guides match the current filters.
             </p>
-            <p className="text-xs text-slate-400 font-mono mt-1">
+            <p className="text-xs text-slate-404 font-mono mt-1">
               Add a reference URL or local video file above to publish it across the platform deck.
             </p>
           </div>

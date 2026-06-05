@@ -3,7 +3,7 @@ import {
   ArrowLeft, FileText, FileCode, Play, Lightbulb, Code2, HelpCircle, 
   Sparkles, Plus, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Link, 
   AlertCircle, Download, Upload, Copy, Check, Eye, Edit3, BookOpen, Map, User, RefreshCw,
-  ClipboardList, Loader2, GripVertical, Layers
+  ClipboardList, Loader2, GripVertical, Layers, LayoutGrid, Grid, List, AlignJustify
 } from 'lucide-react';
 import { 
   Subtopic, Topic, PdfItem, NoteItem, VideoItem, ConceptItem, CodingItem, 
@@ -250,6 +250,7 @@ export function SubtopicView({
 
   // Drag and drop state
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [videoViewMode, setVideoViewMode] = useState<'grid' | 'small_grid' | 'list' | 'compact'>('grid');
 
   // Interactive Quiz State metrics
   const [quizAttempts, setQuizAttempts] = useState<{ [quizId: string]: number }>({}); // maps quizId -> selected choice index
@@ -2188,7 +2189,7 @@ export function SubtopicView({
             })}
 
             {listPdfs.length === 0 && (
-              <div className="py-12 text-center text-gray-400 dark:text-gray-500 italic">
+              <div className="py-12 text-center text-gray-405 dark:text-gray-500 italic">
                 Nothing in PDF files yet. Add one.
               </div>
             )}
@@ -2197,109 +2198,400 @@ export function SubtopicView({
 
         {/* =============== Tab 3: Videos =============== */}
         {activeTab === 'videos' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {listVideos.map(vid => {
-              // Extract YouTube ID if valid
-              let ytId = '';
-              try {
-                if (vid.url.includes('youtube.com/watch')) {
-                  const urlObj = new URL(vid.url);
-                  ytId = urlObj.searchParams.get('v') || '';
-                } else if (vid.url.includes('youtu.be/')) {
-                  ytId = vid.url.split('youtu.be/')[1]?.split('?')[0] || '';
-                }
-              } catch(e) {}
-
-              return (
-                <div 
-                  key={vid.id} 
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/plain', vid.id);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverId(vid.id);
-                  }}
-                  onDragLeave={() => {
-                    setDragOverId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const draggedId = e.dataTransfer.getData('text/plain');
-                    handleVideoReorderSubtopic(draggedId, vid.id);
-                    setDragOverId(null);
-                  }}
-                  className={`rounded-2xl border overflow-hidden bg-white dark:bg-gray-950/50 flex flex-col justify-between shadow-xs relative group transition-all duration-205 ${
-                    dragOverId === vid.id
-                      ? 'border-red-500 bg-red-500/5 scale-[1.015]'
-                      : 'border-slate-200 dark:border-slate-800'
+          <div className="space-y-4">
+            {/* Subtopic Video Layout Switcher */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-150 dark:border-slate-800 shadow-3xs">
+              <span className="text-xs font-bold text-slate-550 dark:text-slate-400 pl-1 font-sans">
+                📺 Video Playlist Display
+              </span>
+              <div className="flex items-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-100/10 p-1 rounded-xl gap-1 w-full sm:w-auto shrink-0 select-none shadow-3xs">
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('grid')}
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                    videoViewMode === 'grid'
+                      ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                      : 'text-slate-550 hover:text-slate-800 dark:text-slate-350 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
-                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button 
-                      type="button"
-                      onClick={() => handleStartEdit(vid, 'videos')}
-                      className="p-1.5 rounded-lg bg-gray-900/80 text-stone-300 hover:text-white transition-colors"
-                      title="Edit Video URL/Title"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => handleDeleteItem(vid.id, 'videos')}
-                      className="p-1.5 rounded-lg bg-gray-900/80 text-gray-400 hover:text-white transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Grid</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('small_grid')}
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                    videoViewMode === 'small_grid'
+                      ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                      : 'text-slate-550 hover:text-slate-800 dark:text-slate-350 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Grid className="w-3.5 h-3.5" />
+                  <span>Small Grid</span>
+                </button>
 
-                  {/* Inline iframe embedded YouTube video player mockup or play button */}
-                  {ytId ? (
-                    <div className="aspect-video w-full bg-black relative">
-                      <iframe 
-                        title={vid.title}
-                        src={`https://www.youtube.com/embed/${ytId}`}
-                        className="absolute inset-0 w-full h-full border-0"
-                        allowFullScreen
-                      />
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => window.open(vid.url, '_blank')}
-                      className="aspect-video bg-gray-900 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:bg-gray-855 transition-colors text-white"
-                    >
-                      <Play className="w-12 h-12 text-amber-500" />
-                      <span className="text-[10px] font-mono tracking-wider mt-2 text-gray-400 uppercase">External media link</span>
-                    </div>
-                  )}
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('list')}
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                    videoViewMode === 'list'
+                      ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                      : 'text-slate-555 hover:text-slate-800 dark:text-slate-350 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>List</span>
+                </button>
 
-                  <div className="p-4">
-                    <div className="flex items-center justify-between gap-2.5 mb-1">
-                      <h4 className="font-extrabold text-slate-800 dark:text-white text-sm font-sans line-clamp-1 leading-normal flex-1">
-                        {vid.title}
-                      </h4>
-                      <GripVertical className="w-4 h-4 text-slate-400 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Drag to reorder playlist position" />
-                    </div>
-                    <a 
-                      href={vid.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-gray-400 font-mono hover:underline truncate block flex items-center gap-1 mt-1"
-                    >
-                      <Link className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{vid.url}</span>
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
-
-            {listVideos.length === 0 && (
-              <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500 italic">
-                Nothing in video resources yet. Pin and add a YouTube tutorial URL.
+                <button
+                  type="button"
+                  onClick={() => setVideoViewMode('compact')}
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                    videoViewMode === 'compact'
+                      ? 'bg-red-500/10 text-red-655 dark:text-red-400 font-bold'
+                      : 'text-slate-555 hover:text-slate-800 dark:text-slate-350 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <AlignJustify className="w-3.5 h-3.5" />
+                  <span>Compact</span>
+                </button>
               </div>
-            )}
+            </div>
+
+            <div className={
+              videoViewMode === 'grid'
+                ? "grid grid-cols-1 md:grid-cols-2 gap-6"
+                : videoViewMode === 'small_grid'
+                  ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
+                  : videoViewMode === 'list'
+                    ? "flex flex-col gap-4"
+                    : "flex flex-col gap-2"
+            }>
+              {listVideos.map(vid => {
+                // Extract YouTube ID if valid
+                let ytId = '';
+                try {
+                  if (vid.url.includes('youtube.com/watch')) {
+                    const urlObj = new URL(vid.url);
+                    ytId = urlObj.searchParams.get('v') || '';
+                  } else if (vid.url.includes('youtu.be/')) {
+                    ytId = vid.url.split('youtu.be/')[1]?.split('?')[0] || '';
+                  }
+                } catch(e) {}
+
+                if (videoViewMode === 'compact') {
+                  return (
+                    <div 
+                      key={vid.id}
+                      className={`bg-white dark:bg-gray-950/45 border ${
+                        dragOverId === vid.id
+                          ? 'border-red-500 bg-red-500/[0.02]'
+                          : 'border-slate-200 dark:border-slate-800'
+                      } rounded-xl px-3 py-2 flex items-center justify-between gap-4 group transition-all duration-150 relative shadow-3xs`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.open(vid.url, '_blank');
+                          }}
+                          className="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-650 dark:bg-slate-800 dark:hover:bg-red-950/40 dark:text-slate-300 flex items-center justify-center shrink-0 transition-colors"
+                        >
+                          <Play className="w-3 h-3 fill-current ml-0.5" />
+                        </button>
+
+                        <div className="min-w-0 flex-1 text-left">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate" title={vid.title}>
+                            {vid.title}
+                          </h4>
+                          <span className="text-[8px] bg-slate-100 dark:bg-slate-800 text-slate-550 dark:text-slate-400 px-1 py-0.2 rounded font-mono uppercase font-bold shrink-0">
+                            {ytId ? 'YouTube' : 'Web Link'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button 
+                          type="button"
+                          onClick={() => handleStartEdit(vid, 'videos')}
+                          className="p-1 text-gray-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteItem(vid.id, 'videos')}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (videoViewMode === 'list') {
+                  const thumbUrl = ytId 
+                    ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` 
+                    : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80';
+
+                  return (
+                    <div 
+                      key={vid.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', vid.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverId(vid.id);
+                      }}
+                      onDragLeave={() => {
+                        setDragOverId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData('text/plain');
+                        handleVideoReorderSubtopic(draggedId, vid.id);
+                        setDragOverId(null);
+                      }}
+                      className={`bg-white dark:bg-gray-950/45 border p-3 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 group transition-all duration-200 shadow-3xs ${
+                        dragOverId === vid.id
+                          ? 'border-red-500 bg-red-500/5'
+                          : 'border-slate-205 dark:border-slate-805'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-slate-450 p-0.5 shrink-0">
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+                        
+                        <div className="relative w-32 aspect-video rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-905 shrink-0 border border-slate-200/60 dark:border-slate-800">
+                          <img 
+                            src={thumbUrl} 
+                            alt={vid.title} 
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <a
+                            href={vid.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute inset-0 bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-all rounded-xl"
+                          >
+                            <Play className="w-4 h-4 fill-current ml-0.5" />
+                          </a>
+                        </div>
+
+                        <div className="min-w-0 flex-1 space-y-1 text-left">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate" title={vid.title}>
+                            {vid.title}
+                          </h4>
+                          <a 
+                            href={vid.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-slate-400 hover:text-blue-500 font-mono flex items-center gap-1 mt-1 truncate"
+                          >
+                            <Link className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{vid.url}</span>
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+                        <button 
+                          type="button"
+                          onClick={() => handleStartEdit(vid, 'videos')}
+                          className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-105 hover:text-slate-850 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteItem(vid.id, 'videos')}
+                          className="p-1.5 rounded-lg text-slate-450 hover:bg-slate-105 hover:text-red-500 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (videoViewMode === 'small_grid') {
+                  const thumbUrl = ytId 
+                    ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` 
+                    : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80';
+
+                  return (
+                    <div 
+                      key={vid.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', vid.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverId(vid.id);
+                      }}
+                      onDragLeave={() => {
+                        setDragOverId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData('text/plain');
+                        handleVideoReorderSubtopic(draggedId, vid.id);
+                        setDragOverId(null);
+                      }}
+                      className={`bg-white dark:bg-gray-950/45 border rounded-2xl overflow-hidden group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs flex flex-col justify-between text-left relative transition-all duration-200 ${
+                        dragOverId === vid.id
+                          ? 'border-red-500 bg-red-500/5'
+                          : 'border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-slate-900/80 p-0.5 rounded-lg">
+                        <button 
+                          type="button"
+                          onClick={() => handleStartEdit(vid, 'videos')}
+                          className="p-1 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteItem(vid.id, 'videos')}
+                          className="p-1 text-slate-300 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="relative aspect-video bg-slate-105 dark:bg-slate-950 overflow-hidden shrink-0">
+                        <img 
+                          src={thumbUrl} 
+                          alt={vid.title} 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <a
+                          href={vid.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute inset-0 bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-all rounded-xl"
+                        >
+                          <Play className="w-4 h-4 fill-current ml-0.5" />
+                        </a>
+                      </div>
+
+                      <div className="p-3">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug" title={vid.title}>
+                          {vid.title}
+                        </h4>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Default full Grid View Option
+                return (
+                  <div 
+                    key={vid.id} 
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', vid.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOverId(vid.id);
+                    }}
+                    onDragLeave={() => {
+                      setDragOverId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const draggedId = e.dataTransfer.setData('text/plain');
+                      handleVideoReorderSubtopic(draggedId, vid.id);
+                      setDragOverId(null);
+                    }}
+                    className={`rounded-2xl border overflow-hidden bg-white dark:bg-gray-950/50 flex flex-col justify-between shadow-xs relative group transition-all duration-205 ${
+                      dragOverId === vid.id
+                        ? 'border-red-500 bg-red-500/5 scale-[1.015]'
+                        : 'border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <button 
+                        type="button"
+                        onClick={() => handleStartEdit(vid, 'videos')}
+                        className="p-1.5 rounded-lg bg-gray-900/80 text-stone-300 hover:text-white transition-colors cursor-pointer"
+                        title="Edit Video URL/Title"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteItem(vid.id, 'videos')}
+                        className="p-1.5 rounded-lg bg-gray-900/80 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Inline iframe embedded YouTube video player mockup or play button */}
+                    {ytId ? (
+                      <div className="aspect-video w-full bg-black relative">
+                        <iframe 
+                          title={vid.title}
+                          src={`https://www.youtube.com/embed/${ytId}`}
+                          className="absolute inset-0 w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : (
+                      <div 
+                        onClick={() => window.open(vid.url, '_blank')}
+                        className="aspect-video bg-gray-900 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:bg-gray-855 transition-colors text-white"
+                      >
+                        <Play className="w-12 h-12 text-amber-500" />
+                        <span className="text-[10px] font-mono tracking-wider mt-2 text-gray-400 uppercase">External media link</span>
+                      </div>
+                    )}
+
+                    <div className="p-4 text-left">
+                      <div className="flex items-center justify-between gap-2.5 mb-11">
+                        <h4 className="font-extrabold text-slate-800 dark:text-white text-sm font-sans line-clamp-1 leading-normal flex-1">
+                          {vid.title}
+                        </h4>
+                        <GripVertical className="w-4 h-4 text-slate-400 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Drag to reorder playlist position" />
+                      </div>
+                      <a 
+                        href={vid.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-gray-400 font-mono hover:underline truncate block flex items-center gap-1 mt-1"
+                      >
+                        <Link className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{vid.url}</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {listVideos.length === 0 && (
+                <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500 italic">
+                  Nothing in video resources yet. Pin and add a YouTube tutorial URL.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
