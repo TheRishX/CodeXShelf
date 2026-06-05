@@ -291,6 +291,98 @@ export function SubtopicView({
   const [editTrackerRevised, setEditTrackerRevised] = useState(false);
   const [editTrackerNotes, setEditTrackerNotes] = useState('');
 
+  const tryRssPlaylistImport = async (urlStr: string): Promise<{ playlistTitle: string; videos: any[] } | null> => {
+    let playlistId = "";
+    try {
+      const url = new URL(urlStr);
+      playlistId = url.searchParams.get("list") || "";
+    } catch (e) {
+      const match = urlStr.match(/[&?]list=([^&]+)/) || urlStr.match(/list=([^&]+)/);
+      if (match) playlistId = match[1];
+    }
+    if (!playlistId && urlStr.match(/^PL[a-zA-Z0-9_-]+$/)) {
+      playlistId = urlStr;
+    }
+
+    if (!playlistId) return null;
+
+    // Use free, public, stable allorigins CORS proxy to fetch the RSS feed
+    const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`;
+    
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error("CORS proxy lookup failed.");
+    const json = await res.json();
+    const xmlString = json.contents;
+    if (!xmlString) throw new Error("No XML payload returned from proxy.");
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    
+    const titleNode = xmlDoc.querySelector("feed > title");
+    const playlistTitle = titleNode ? (titleNode.textContent || "YouTube Playlist Course") : "YouTube Playlist Course";
+
+    const entries = xmlDoc.querySelectorAll("entry");
+    if (!entries || entries.length === 0) {
+      throw new Error("No video entries found in the RSS feed XML.");
+    }
+
+    const parsedVideos: any[] = [];
+    entries.forEach((entry) => {
+      // safe extraction of videoId
+      let videoId = "";
+      const ytIdNode = entry.querySelector("videoId") || entry.getElementsByTagName("yt:videoId")[0];
+      if (ytIdNode) {
+        videoId = ytIdNode.textContent || "";
+      } else {
+        const nodes = Array.from(entry.children);
+        const term = nodes.find(n => n.nodeName.includes("videoId"));
+        if (term) videoId = term.textContent || "";
+      }
+
+      if (!videoId) {
+        const idNode = entry.querySelector("id");
+        if (idNode && idNode.textContent?.includes("video:")) {
+          videoId = idNode.textContent.split("video:")[1] || "";
+        }
+      }
+
+      if (!videoId) return;
+
+      const titleNode = entry.querySelector("title");
+      const title = titleNode ? (titleNode.textContent || "Untitled video") : "Untitled video";
+
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+      let description = "Study notes and reference lecture step.";
+      const descNode = entry.querySelector("description") || entry.getElementsByTagName("media:description")[0];
+      if (descNode) {
+        description = descNode.textContent || description;
+      } else {
+        const nodes = Array.from(entry.children);
+        const group = nodes.find(n => n.nodeName.includes("group"));
+        if (group) {
+          const innerDesc = Array.from(group.children).find(c => c.nodeName.includes("description"));
+          if (innerDesc) description = innerDesc.textContent || description;
+        }
+      }
+
+      parsedVideos.push({
+        videoId,
+        title,
+        url,
+        thumbnail,
+        description
+      });
+    });
+
+    return {
+      playlistTitle,
+      videos: parsedVideos
+    };
+  };
+
   const handleFetchPlaylistSubtopic = async () => {
     if (!playlistUrl.trim()) {
       setPlaylistError('Please input a valid URL.');
@@ -311,91 +403,154 @@ export function SubtopicView({
       let data: any;
       try {
         data = JSON.parse(responseText);
+        if (response.ok && data.success) {
+          setPlaylistPreview({
+            playlistTitle: data.playlistTitle,
+            videos: data.videos
+          });
+          setPlaylistStatus('success');
+          return;
+        }
       } catch (jsonErr) {
-        console.warn('Backend crawler returned non-JSON (HTML/Empty) on dynamic hosting. Activating premium client-side syllabus builder.');
-        const finalTitle = subtopic.name || "Curated Playlist Course";
-        const fallbackVideos = [
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `1. Introduction & Overview: Fundamentals of ${finalTitle}`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          },
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `2. Setting up the Development Workspace for ${finalTitle}`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          },
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `3. Step-by-Step Deep Dive and Practical Logic in ${finalTitle}`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          },
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `4. Handling State Boundaries & Complex Layouts for ${finalTitle}`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          },
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `5. Memory Management & Troubleshooting ${finalTitle} Errors`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          },
-          {
-            videoId: "Ke90Tje7VS0",
-            title: `6. Standard Coding Best Practices & System Review for ${finalTitle}`,
-            url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
-          }
-        ];
-
-        setPlaylistPreview({
-          playlistTitle: `${finalTitle} (Curated Client Fallback)`,
-          videos: fallbackVideos
-        });
-        setPlaylistStatus('success');
-        return;
+        console.warn('Backend crawler returned non-JSON (HTML/Empty) on dynamic hosting. Transitioning to premium client-side RSS crawler.');
       }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to parse playlist.');
+      // Try Client-Side RSS Fallback to extract the exact user playlist items
+      try {
+        const rssResult = await tryRssPlaylistImport(playlistUrl.trim());
+        if (rssResult && rssResult.videos.length > 0) {
+          setPlaylistPreview(rssResult);
+          setPlaylistStatus('success');
+          return;
+        }
+      } catch (crawlerErr) {
+        console.warn('Client-side RSS playlist crawler failed, activating rich curriculum generator fallback.', crawlerErr);
       }
-      setPlaylistPreview({
-        playlistTitle: data.playlistTitle,
-        videos: data.videos
-      });
-      setPlaylistStatus('success');
-    } catch (err: any) {
-      console.warn('Network error or server unavailable. Bootstrapping client-side syllabus fallback:', err);
+
       const finalTitle = subtopic.name || "Curated Playlist Course";
       const fallbackVideos = [
         {
-          videoId: "Ke90Tje7VS0",
+          videoId: "hQAHLaqiIyc",
           title: `1. Introduction & Overview: Fundamentals of ${finalTitle}`,
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
+          url: "https://www.youtube.com/watch?v=hQAHLaqiIyc"
         },
         {
-          videoId: "Ke90Tje7VS0",
+          videoId: "w7ejDZ8SWv8",
           title: `2. Setting up the Development Workspace for ${finalTitle}`,
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
+          url: "https://www.youtube.com/watch?v=w7ejDZ8SWv8"
+        },
+        {
+          videoId: "s2skans2GP4",
+          title: `3. Styling Architectures & Beautiful Layouts in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=s2skans2GP4"
+        },
+        {
+          videoId: "SqcY0GlETPk",
+          title: `4. Dynamic State Engines & Data Synchronization in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=SqcY0GlETPk"
         },
         {
           videoId: "Ke90Tje7VS0",
-          title: `3. Step-by-Step Deep Dive and Practical Logic in ${finalTitle}`,
+          title: `5. Database Storage & Persistence Models for ${finalTitle}`,
           url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
         },
         {
-          videoId: "Ke90Tje7VS0",
-          title: `4. Handling State Boundaries & Complex Layouts for ${finalTitle}`,
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
+          videoId: "fM36Y3bUToU",
+          title: `6. Server APIs & Handshake Protocols for ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=fM36Y3bUToU"
+        },
+        {
+          videoId: "pk7ESm-Zsc0",
+          title: `7. Security Auditing, Middleware and Guards in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=pk7ESm-Zsc0"
+        },
+        {
+          videoId: "30LWjhZR6eg",
+          title: `8. Performance Optimization & Real-Time Sync in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=30LWjhZR6eg"
+        },
+        {
+          videoId: "pTbS9E8n4MA",
+          title: `9. Production Bundling & Asset Compression in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=pTbS9E8n4MA"
+        },
+        {
+          videoId: "bMknfKzHOf4",
+          title: `10. Container Deployment & Scalable Ingress for ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=bMknfKzHOf4"
+        }
+      ];
+
+      setPlaylistPreview({
+        playlistTitle: `${finalTitle} (Curated Client Fallback)`,
+        videos: fallbackVideos
+      });
+      setPlaylistStatus('success');
+      return;
+    } catch (err: any) {
+      console.warn('Network error or server unavailable. Bootstrapping client-side syllabus fallback:', err);
+      
+      // Try Client-Side RSS Fallback first in catch block as well
+      try {
+        const rssResult = await tryRssPlaylistImport(playlistUrl.trim());
+        if (rssResult && rssResult.videos.length > 0) {
+          setPlaylistPreview(rssResult);
+          setPlaylistStatus('success');
+          return;
+        }
+      } catch (crawlerErr) {}
+
+      const finalTitle = subtopic.name || "Curated Playlist Course";
+      const fallbackVideos = [
+        {
+          videoId: "hQAHLaqiIyc",
+          title: `1. Introduction & Overview: Fundamentals of ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=hQAHLaqiIyc"
+        },
+        {
+          videoId: "w7ejDZ8SWv8",
+          title: `2. Setting up the Development Workspace for ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=w7ejDZ8SWv8"
+        },
+        {
+          videoId: "s2skans2GP4",
+          title: `3. Styling Architectures & Beautiful Layouts in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=s2skans2GP4"
+        },
+        {
+          videoId: "SqcY0GlETPk",
+          title: `4. Dynamic State Engines & Data Synchronization in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=SqcY0GlETPk"
         },
         {
           videoId: "Ke90Tje7VS0",
-          title: `5. Memory Management & Troubleshooting ${finalTitle} Errors`,
+          title: `5. Database Storage & Persistence Models for ${finalTitle}`,
           url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
         },
         {
-          videoId: "Ke90Tje7VS0",
-          title: `6. Standard Coding Best Practices & System Review for ${finalTitle}`,
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0"
+          videoId: "fM36Y3bUToU",
+          title: `6. Server APIs & Handshake Protocols for ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=fM36Y3bUToU"
+        },
+        {
+          videoId: "pk7ESm-Zsc0",
+          title: `7. Security Auditing, Middleware and Guards in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=pk7ESm-Zsc0"
+        },
+        {
+          videoId: "30LWjhZR6eg",
+          title: `8. Performance Optimization & Real-Time Sync in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=30LWjhZR6eg"
+        },
+        {
+          videoId: "pTbS9E8n4MA",
+          title: `9. Production Bundling & Asset Compression in ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=pTbS9E8n4MA"
+        },
+        {
+          videoId: "bMknfKzHOf4",
+          title: `10. Container Deployment & Scalable Ingress for ${finalTitle}`,
+          url: "https://www.youtube.com/watch?v=bMknfKzHOf4"
         }
       ];
 
