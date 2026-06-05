@@ -43,6 +43,8 @@ export interface VideoItem {
   url: string;
   platform: 'youtube' | 'generic';
   createdAt: string;
+  isPlaying?: boolean;
+  isCompleted?: boolean;
 }
 
 export interface ConceptItem {

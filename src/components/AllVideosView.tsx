@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Search, Filter, Video, ExternalLink, Trash2, 
   Sparkles, Plus, AlertCircle, RefreshCw, Layers,
-  X, ArrowLeft, ArrowRight, Check, Upload, Link, FileVideo
+  X, ArrowLeft, ArrowRight, Check, Upload, Link, FileVideo,
+  Star, Tv, Flame, Trophy, CheckCircle2, Award
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { DatabaseState, VideoItem, Subtopic, Topic } from '../types';
 
 interface AllVideosViewProps {
@@ -29,6 +31,13 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
   const [formSubtopicId, setFormSubtopicId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formError, setFormError] = useState('');
+
+  // Psychologically rewarding watch-tracker metrics
+  const totalVideos = videos.length;
+  const completedVideos = videos.filter(v => v.isCompleted).length;
+  const completionPercentage = totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0;
+  const currentlyWatchingVideo = videos.find(v => v.isPlaying);
+  const nextRecommendedVideo = videos.find(v => !v.isCompleted);
 
   // Local object URL resolution map for browser session
   const [resolvedVideoUrls, setResolvedVideoUrls] = useState<Record<string, string>>({});
@@ -111,6 +120,64 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
       active = false;
     };
   }, [videos]);
+
+  // Synchronize playing state with browser active url player
+  useEffect(() => {
+    const isPlayingVid = videos.find(v => v.isPlaying);
+    if (isPlayingVid) {
+      const targetUrl = isPlayingVid.url.startsWith('local-video://')
+        ? resolvedVideoUrls[isPlayingVid.id]
+        : isPlayingVid.url;
+      if (targetUrl && activeVideoUrl !== targetUrl) {
+        setActiveVideoUrl(targetUrl);
+      }
+    }
+  }, [videos, resolvedVideoUrls, activeVideoUrl]);
+
+  // Handle toggling completion with slide states
+  const handleToggleComplete = (vidId: string) => {
+    const updated = videos.map(v => {
+      if (v.id === vidId) {
+        return { ...v, isCompleted: !v.isCompleted };
+      }
+      return v;
+    });
+    onUpdateDb({ videos: updated });
+  };
+
+  // Handle setting a single video as active and playing
+  const handlePlayAndMark = (vidId: string, playUrl?: string, openSource: boolean = false, sourceUrl?: string) => {
+    const updated = videos.map(v => ({
+      ...v,
+      isPlaying: v.id === vidId
+    }));
+    onUpdateDb({ videos: updated });
+
+    if (playUrl) {
+      setActiveVideoUrl(playUrl);
+      setTimeout(() => {
+        const playerElem = document.getElementById('media-player-section');
+        if (playerElem) {
+          playerElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          window.scrollTo({ top: 350, behavior: 'smooth' });
+        }
+      }, 50);
+    }
+
+    if (openSource && sourceUrl) {
+      window.open(sourceUrl, '_blank', 'noreferrer');
+    }
+  };
+
+  // Utility to complete all or clear history
+  const handleMarkAllVideosComplete = (complete: boolean) => {
+    const updated = videos.map(v => ({
+      ...v,
+      isCompleted: complete
+    }));
+    onUpdateDb({ videos: updated });
+  };
 
   // Find subtopic and topic details
   const getSubtopicPath = (subtopicId: string) => {
@@ -296,8 +363,108 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
         </button>
       </div>
 
+      {/* Dynamic Psychological Mastery Progress Tracker */}
+      <div className="bg-gradient-to-r from-red-555/10 via-amber-500/5 to-emerald-500/10 dark:from-red-950/20 dark:via-amber-950/10 dark:to-emerald-950/20 border-2 border-slate-205 dark:border-slate-805 rounded-[2rem] p-6 shadow-3xs flex flex-col md:flex-row gap-6 items-center">
+        {/* Left Circular Gauge or big stat percentage */}
+        <div className="relative flex items-center justify-center shrink-0 w-28 h-28">
+          <svg className="w-full h-full -rotate-90">
+            <circle
+              cx="56"
+              cy="56"
+              r="46"
+              className="stroke-slate-200 dark:stroke-slate-805"
+              strokeWidth="7"
+              fill="transparent"
+            />
+            <motion.circle
+              cx="56"
+              cy="56"
+              r="46"
+              className="stroke-emerald-500 dark:stroke-emerald-400"
+              strokeWidth="7"
+              fill="transparent"
+              strokeDasharray="289"
+              initial={{ strokeDashoffset: 289 }}
+              animate={{ strokeDashoffset: 289 - (289 * completionPercentage) / 100 }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute flex flex-col items-center justify-center">
+            <span className="text-2xl font-black text-slate-850 dark:text-white leading-none">
+              {completionPercentage}%
+            </span>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-slate-400 dark:text-slate-500 font-bold mt-1">
+              Complete
+            </span>
+          </div>
+        </div>
+
+        {/* Informational Center Block */}
+        <div className="flex-1 space-y-3 text-center md:text-left">
+          <div>
+            <span className="text-[10px] uppercase font-mono font-black tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-500/25 px-2.5 py-1 rounded-full inline-flex items-center gap-1">
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              <span>Syllabus Progress Indicator</span>
+            </span>
+            <h3 className="text-lg font-black text-slate-850 dark:text-white mt-1.5 leading-snug">
+              📝 Curated Watch Bench: {completedVideos} of {totalVideos} fully mastered
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              {completionPercentage === 0 
+                ? "Let's kickstart our focus loop! Play any video below or mark them complete to begin. 🚀"
+                : completionPercentage < 50
+                  ? "Fantastic start! Keep riding the momentum. You are building real memory paths now! 🧠🔥"
+                  : completionPercentage < 100
+                    ? "So close to absolute curriculum mastery! Complete the remaining videos to finish. 🌟"
+                    : "Absolute mastery unlocked! You've watched every video reference. Outstanding work! 🏆🎓"
+              }
+            </p>
+          </div>
+
+          {/* Quick recommendations action shortcuts */}
+          {nextRecommendedVideo && (
+            <div className="pt-1.5 flex flex-wrap items-center justify-center md:justify-start gap-2 text-xs">
+              <span className="text-slate-400 dark:text-slate-500 font-black font-mono text-[10px] uppercase tracking-wider">Up Next:</span>
+              <button
+                onClick={() => {
+                  const isLocal = nextRecommendedVideo.url?.startsWith('local-video://');
+                  const playUrl = isLocal ? resolvedVideoUrls[nextRecommendedVideo.id] : nextRecommendedVideo.url;
+                  handlePlayAndMark(nextRecommendedVideo.id, playUrl);
+                }}
+                className="px-3.5 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-855 dark:text-slate-300 font-bold rounded-xl flex items-center gap-2 shadow-3xs cursor-pointer transition-all hover:scale-[1.02]"
+              >
+                <Flame className="w-3.5 h-3.5 text-red-550 animate-pulse shrink-0" />
+                <span className="truncate max-w-[200px] text-xs font-black">{nextRecommendedVideo.title}</span>
+                <Play className="w-3 h-3 fill-current text-slate-500 shrink-0" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Global override keys */}
+        {totalVideos > 0 && (
+          <div className="shrink-0 flex flex-col sm:flex-row md:flex-col gap-2 w-full md:w-auto border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 pt-4 md:pt-0 md:pl-5">
+            <button
+              onClick={() => handleMarkAllVideosComplete(true)}
+              className="px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-650 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-500/20"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span>Mark All Completed</span>
+            </button>
+            <button
+              onClick={() => handleMarkAllVideosComplete(false)}
+              className="px-4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-505 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-400 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-transparent"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+              <span>Reset Progress</span>
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Control Actions toolbar */}
-      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-850 shadow-3xs">
+      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-855 shadow-3xs">
         {/* Search */}
         <div className="relative w-full sm:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
@@ -306,7 +473,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
             placeholder="Search lectures, code walkthrough channels, subtopic categories..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 rounded-xl text-sm text-slate-850 dark:text-slate-100 placeholder-slate-400 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-sans"
+            className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-805 bg-slate-50/50 dark:bg-slate-950 rounded-xl text-sm text-slate-855 dark:text-slate-100 placeholder-slate-400 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-sans"
           />
         </div>
 
@@ -316,7 +483,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
           <select
             value={selectedTopicId}
             onChange={(e) => setSelectedTopicId(e.target.value)}
-            className="w-full sm:w-auto px-4 py-2 border border-slate-200 dark:border-slate-800 bg-slate-55 dark:bg-slate-950 rounded-xl text-xs outline-hidden text-slate-705 dark:text-slate-300 font-sans focus:border-blue-500"
+            className="w-full sm:w-auto px-4 py-2 border border-slate-200 dark:border-slate-805 bg-slate-55 dark:bg-slate-950 rounded-xl text-xs outline-hidden text-slate-705 dark:text-slate-300 font-sans focus:border-blue-500"
           >
             <option value="all">All Topics (Default)</option>
             {topics.map(t => (
@@ -328,17 +495,45 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
       {/* Main interactive player if active */}
       {activeVideoUrl && (
-        <div className="p-5 rounded-3xl bg-slate-950 text-white border border-slate-800 flex flex-col gap-3 relative animate-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-mono bg-red-500/25 text-red-400 px-2 py-0.5 rounded font-black">
-              System Canvas Media Player
-            </span>
-            <button 
-              onClick={() => setActiveVideoUrl(null)}
-              className="text-xs text-slate-400 hover:text-white font-mono bg-slate-900 hover:bg-slate-800 px-3 py-1 rounded-xl cursor-pointer"
-            >
-              Close Screen
-            </button>
+        <div 
+          id="media-player-section"
+          className="p-6 rounded-[2.25rem] bg-slate-950 text-white border border-slate-800 flex flex-col gap-4 relative animate-in zoom-in-95 duration-150 shadow-2xl scroll-mt-24"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase font-mono bg-red-500/25 text-red-450 px-2.5 py-1 rounded-full font-black animate-pulse flex items-center gap-1 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                <span>Now Playing inside System Canvas</span>
+              </span>
+              {currentlyWatchingVideo && (
+                <span className="text-xs font-mono text-slate-300 font-bold truncate max-w-[280px] xs:max-w-xs md:max-w-md">
+                   ➔  "{currentlyWatchingVideo.title}"
+                </span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {currentlyWatchingVideo && (
+                <button
+                  onClick={() => handleToggleComplete(currentlyWatchingVideo.id)}
+                  className={`px-3.5 py-1 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors ${
+                    currentlyWatchingVideo.isCompleted 
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/30' 
+                      : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{currentlyWatchingVideo.isCompleted ? 'Watched!' : 'Mark Completed'}</span>
+                </button>
+              )}
+              
+              <button 
+                onClick={() => setActiveVideoUrl(null)}
+                className="text-xs text-slate-400 hover:text-white font-mono bg-slate-900 hover:bg-slate-800 px-3 py-1 rounded-xl cursor-pointer transition-colors"
+              >
+                Close Screen
+              </button>
+            </div>
           </div>
           
           <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-slate-900">
@@ -365,7 +560,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   href={activeVideoUrl} 
                   target="_blank" 
                   rel="noreferrer" 
-                  className="px-4 py-2 bg-slate-800/80 rounded-xl text-xs font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 hover:bg-slate-700 hover:text-white transition-colors"
+                  className="px-4 py-2 bg-slate-800/85 rounded-xl text-xs font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 hover:bg-slate-700 hover:text-white transition-colors"
                 >
                   <span>Open Video in Secondary Tab</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -391,50 +586,81 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
           return (
             <div 
               key={vid.id}
-              className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-850 rounded-3xl overflow-hidden group hover:border-slate-300 dark:hover:border-slate-800 shadow-3xs hover:shadow-xs transition-colors flex flex-col text-left"
+              className={`bg-white dark:bg-slate-900 border ${
+                vid.isPlaying 
+                  ? 'border-red-500/80 ring-3 ring-red-500/10' 
+                  : vid.isCompleted 
+                    ? 'border-emerald-500/30 dark:border-emerald-900/30 ring-3 ring-emerald-500/5'
+                    : 'border-slate-205 dark:border-slate-855'
+              } rounded-[2.1rem] overflow-hidden group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs hover:shadow-xs transition-all duration-300 flex flex-col text-left relative`}
             >
+              {vid.isPlaying && (
+                <div className="absolute top-3.5 left-3.5 z-10 px-3 py-1 bg-red-655 text-white text-[9px] font-black uppercase tracking-wider rounded-full shadow-md animate-pulse flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                  <span>Now Capturing</span>
+                </div>
+              )}
+
+              {vid.isCompleted && !vid.isPlaying && (
+                <span className="absolute top-3.5 left-3.5 z-10 px-3 py-1 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider rounded-full shadow-xs flex items-center gap-1 font-mono">
+                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  <span>Completed</span>
+                </span>
+              )}
+
               {/* Thumbnail Play Section */}
               <div className="relative aspect-video bg-slate-100 dark:bg-slate-950 overflow-hidden shrink-0 flex items-center justify-center text-center">
                 {thumbUrl === 'placeholder' ? (
-                  <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-slate-850 to-red-950/90 flex flex-col items-center justify-center gap-1.5 p-4 text-white">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-slate-850 to-red-950/80 flex flex-col items-center justify-center gap-1.5 p-4 text-white">
                     <FileVideo className="w-10 h-10 text-rose-500 opacity-90" />
-                    <span className="text-[10px] font-mono opacity-80 tracking-wide font-bold uppercase">Local Video Asset</span>
+                    <span className="text-[10px] font-mono opacity-80 tracking-wide font-bold uppercase select-none">Local Video Asset</span>
                     <span className="text-[9px] font-mono opacity-40 truncate max-w-full">{(resolvedVideoUrls[vid.id] ? "Loaded Offline Ready" : "Loading binary...")}</span>
                   </div>
                 ) : (
                   <img 
                     src={thumbUrl} 
                     alt={vid.title} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
                 )}
                 
                 {/* Visual Glass backdrop dark layer overlay */}
-                <div className="absolute inset-0 bg-slate-950/20 group-hover:bg-slate-950/40 transition-colors" />
+                <div className="absolute inset-0 bg-slate-950/15 group-hover:bg-slate-950/35 transition-colors duration-300" />
 
                 {/* Circle Center video trigger */}
                 <button
                   onClick={() => {
                     if (playUrl) {
-                      setActiveVideoUrl(playUrl);
-                      window.scrollTo({ top: 350, behavior: 'smooth' });
+                      handlePlayAndMark(vid.id, playUrl);
                     }
                   }}
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-red-650/95 text-white flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all scale-100 cursor-pointer"
-                  title="Play video resource in preview screen"
+                  className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full ${
+                    vid.isPlaying 
+                      ? 'bg-red-650 text-white scale-110 shadow-lg shadow-red-600/30' 
+                      : 'bg-black/60 hover:bg-red-600 text-white shadow-lg hover:scale-110'
+                  } flex items-center justify-center transition-all duration-300 cursor-pointer`}
+                  title="Play video resource inside canvas"
                 >
-                  <Play className="w-5.5 h-5.5 fill-current ml-0.5" />
+                  {vid.isPlaying ? (
+                    <span className="flex items-center justify-center gap-0.5">
+                      <span className="w-1 h-3.5 bg-white rounded-xs animate-bounce" style={{ animationDelay: '0.1s' }} />
+                      <span className="w-1 h-5 bg-white rounded-xs animate-bounce" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1 h-3 bg-white rounded-xs animate-bounce" style={{ animationDelay: '0.3s' }} />
+                    </span>
+                  ) : (
+                    <Play className="w-6 h-6 fill-current ml-0.5" />
+                  )}
                 </button>
 
-                <span className="absolute bottom-3.5 right-3.5 bg-black/70 backdrop-blur-xs text-[9px] font-mono tracking-wider font-bold text-white px-2 py-0.5 rounded uppercase">
+                <span className="absolute bottom-3.5 right-3.5 bg-black/75 backdrop-blur-xs text-[9px] font-mono tracking-wider font-bold text-white px-2 py-0.5 rounded-lg uppercase">
                   {isLocal ? 'Local Storage' : (vid.platform === 'youtube' ? 'YouTube' : 'Web Video')}
                 </span>
               </div>
 
               {/* Text Info Section */}
               <div className="p-5 flex-1 flex flex-col justify-between gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-1">
                     {sub && topic ? (
                       <button
@@ -443,11 +669,11 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                       >
                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: topic.color }} />
                         <span>{topic.name}</span>
-                        <span className="text-slate-400 font-sans">➔</span>
+                        <span className="text-slate-405 font-sans">➔</span>
                         <span className="underline truncate">{sub.name}</span>
                       </button>
                     ) : (
-                      <span className="text-[9px] text-slate-400 font-mono">Curated Resource</span>
+                      <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider">Curated Resource</span>
                     )}
 
                     <span className="text-[9px] text-slate-400 font-mono shrink-0">
@@ -460,30 +686,96 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   </h4>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  {isLocal ? (
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-black">
-                      Stored Locally Only
+                {/* Tactile Watch-Complete switch slider */}
+                <div className="bg-slate-55/70 dark:bg-slate-950/40 p-2.5 rounded-2xl border border-slate-155 dark:border-slate-850 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-450 dark:text-slate-550 block leading-none select-none">
+                      Complete Watch
                     </span>
-                  ) : (
-                    <a
-                      href={vid.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] font-mono tracking-widest text-[#4d4d4d] dark:text-slate-450 hover:text-blue-650 font-bold uppercase transition-colors"
-                    >
-                      <span>Source link</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
+                    <span className="text-[11px] font-bold text-slate-705 dark:text-slate-350 block leading-tight">
+                      {vid.isCompleted ? '🎉 Mastered!' : '⏳ Not Watched'}
+                    </span>
+                  </div>
 
+                  {/* Tactile Switch */}
                   <button
-                    onClick={() => handleDeleteItem(vid.id)}
-                    className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                    title="Remove Video resource card"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleComplete(vid.id);
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-all duration-300 focus:outline-none cursor-pointer border ${
+                      vid.isCompleted 
+                        ? 'bg-emerald-500 border-emerald-600 shadow-xs shadow-emerald-500/10' 
+                        : 'bg-slate-205 dark:bg-slate-800 border-slate-300/80 dark:border-slate-750'
+                    }`}
+                    title="Slide to complete/uncomplete watch progress"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <motion.div
+                      layout
+                      transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                      className={`w-5 h-5 rounded-full bg-white shadow-xs flex items-center justify-center text-[10px] font-bold ${
+                        vid.isCompleted ? 'text-emerald-500' : 'text-slate-400'
+                      }`}
+                      animate={{ x: vid.isCompleted ? 20 : 1 }}
+                    >
+                      {vid.isCompleted ? '✓' : ''}
+                    </motion.div>
                   </button>
+                </div>
+
+                {/* Bottom Highlighter & Actions line */}
+                <div className="space-y-2.5 pt-1">
+                  {/* Highlighter red button / marker */}
+                  <button
+                    onClick={() => {
+                      if (playUrl) {
+                        handlePlayAndMark(vid.id, playUrl);
+                      }
+                    }}
+                    className={`w-full py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      vid.isPlaying 
+                        ? 'bg-red-600 text-white shadow-md shadow-red-600/20 ring-2 ring-red-400/30' 
+                        : 'bg-slate-50 hover:bg-red-50 text-slate-855 hover:text-red-700 dark:bg-slate-800/50 dark:hover:bg-red-950/20 dark:text-slate-300 dark:hover:text-red-400 border border-slate-100 dark:border-slate-850 hover:border-red-150 dark:hover:border-red-900/40'
+                    }`}
+                  >
+                    {vid.isPlaying ? (
+                      <>
+                        <Tv className="w-3.5 h-3.5 animate-pulse" />
+                        <span>📺 NOW WATCHING</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>Play Lecture Guide</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-850 pt-2 text-[10px] text-slate-400">
+                    {isLocal ? (
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 dark:text-slate-500 font-bold">
+                        Offline Ready
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handlePlayAndMark(vid.id, undefined, true, vid.url)}
+                        className="inline-flex items-center gap-1 hover:text-blue-650 dark:hover:text-blue-400 font-bold transition-all uppercase font-mono tracking-widest text-[#4d4d4d] dark:text-slate-450"
+                        title="Opening source link marks this video as active player focus"
+                      >
+                        <span>Source link</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDeleteItem(vid.id)}
+                      className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Remove Video resource card"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
