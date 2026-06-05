@@ -3,7 +3,7 @@ import {
   Play, Search, Filter, Video, ExternalLink, Trash2, 
   Sparkles, Plus, AlertCircle, RefreshCw, Layers,
   X, ArrowLeft, ArrowRight, Check, Upload, Link, FileVideo,
-  Star, Tv, Flame, Trophy, CheckCircle2, Award
+  Star, Tv, Flame, Trophy, CheckCircle2, Award, Loader2, GripVertical
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { DatabaseState, VideoItem, Subtopic, Topic } from '../types';
@@ -25,12 +25,21 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
   // 2-step beautiful modal wizard states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // 1 or 2
-  const [videoType, setVideoType] = useState<'link' | 'upload'>('link');
+  const [videoType, setVideoType] = useState<'link' | 'upload' | 'playlist'>('link');
   const [formTitle, setFormTitle] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formSubtopicId, setFormSubtopicId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formError, setFormError] = useState('');
+
+  // Playlist Importer Specific State
+  const [importPlaylistUrl, setImportPlaylistUrl] = useState('');
+  const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'success' | 'err'>('idle');
+  const [importError, setImportError] = useState('');
+  const [importedPreview, setImportedPreview] = useState<{ playlistTitle: string, videos: any[] } | null>(null);
+  
+  // Tactical Drag & Drop state markers
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Psychologically rewarding watch-tracker metrics
   const totalVideos = videos.length;
@@ -227,6 +236,11 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
           setFormError('Please enter a video title.');
           return;
         }
+      } else if (videoType === 'playlist') {
+        if (!importedPreview || importedPreview.videos.length === 0) {
+          setFormError('Please successfully fetch your YouTube Playlist videos first.');
+          return;
+        }
       } else {
         if (!selectedFile) {
           setFormError('Please select a local video file from storage.');
@@ -252,6 +266,33 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
   const handleAddVideoItem = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+
+    if (videoType === 'playlist') {
+      if (!importedPreview || importedPreview.videos.length === 0) {
+        setFormError('Please import playlist videos first.');
+        return;
+      }
+      if (!formSubtopicId) {
+        setFormError('Please associate this resource with a subtopic page.');
+        return;
+      }
+
+      const importedVids: VideoItem[] = importedPreview.videos.map((vid, idx) => ({
+        id: `vid-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        subtopicId: formSubtopicId,
+        title: vid.title,
+        url: vid.url,
+        platform: 'youtube',
+        createdAt: new Date().toISOString()
+      }));
+
+      onUpdateDb({ videos: [...videos, ...importedVids] });
+      setIsModalOpen(false);
+      setImportPlaylistUrl('');
+      setImportedPreview(null);
+      setImportStatus('idle');
+      return;
+    }
 
     if (!formTitle.trim()) {
       setFormError('Please enter a video title.');
@@ -301,6 +342,52 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
     onUpdateDb({ videos: [...videos, newVid] });
     setIsModalOpen(false);
+  };
+
+  const handleFetchPlaylist = async () => {
+    if (!importPlaylistUrl.trim()) {
+      setImportError('Please enter a YouTube playlist link first.');
+      setImportStatus('err');
+      return;
+    }
+    setImportStatus('loading');
+    setImportError('');
+    setImportedPreview(null);
+
+    try {
+      const response = await fetch('/api/youtube/playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlistUrl: importPlaylistUrl.trim() })
+      });
+
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.error || 'Server returned an error importing the playlist.');
+      }
+
+      setImportedPreview({
+        playlistTitle: resData.playlistTitle,
+        videos: resData.videos
+      });
+      setImportStatus('success');
+    } catch (err: any) {
+      console.error(err);
+      setImportError(err.message || 'Failed to sync with the playlist provider.');
+      setImportStatus('err');
+    }
+  };
+
+  const handleReorder = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const fromIndex = videos.findIndex(v => v.id === draggedId);
+    const toIndex = videos.findIndex(v => v.id === targetId);
+    if (fromIndex !== -1 && toIndex !== -1) {
+      const updated = [...videos];
+      const [movedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, movedItem);
+      onUpdateDb({ videos: updated });
+    }
   };
 
   // Extract Youtube ID helper
@@ -586,14 +673,40 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
           return (
             <div 
               key={vid.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", vid.id);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (dragOverId !== vid.id) {
+                  setDragOverId(vid.id);
+                }
+              }}
+              onDragLeave={() => {
+                setDragOverId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const dId = e.dataTransfer.getData("text/plain");
+                handleReorder(dId, vid.id);
+                setDragOverId(null);
+              }}
               className={`bg-white dark:bg-slate-900 border ${
                 vid.isPlaying 
                   ? 'border-red-500/80 ring-3 ring-red-500/10' 
-                  : vid.isCompleted 
-                    ? 'border-emerald-500/30 dark:border-emerald-900/30 ring-3 ring-emerald-500/5'
-                    : 'border-slate-205 dark:border-slate-855'
-              } rounded-[2.1rem] overflow-hidden group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs hover:shadow-xs transition-all duration-300 flex flex-col text-left relative`}
+                  : dragOverId === vid.id
+                    ? 'border-blue-500 ring-4 ring-blue-500/10 scale-[0.98]'
+                    : vid.isCompleted 
+                      ? 'border-emerald-500/30 dark:border-emerald-900/30 ring-3 ring-emerald-500/5'
+                      : 'border-slate-205 dark:border-slate-855'
+              } rounded-[2.1rem] overflow-hidden group hover:border-slate-350 dark:hover:border-slate-800 shadow-3xs hover:shadow-xs transition-all duration-300 flex flex-col text-left relative cursor-grab active:cursor-grabbing`}
             >
+              <div className="absolute top-3.5 right-3.5 z-10 p-1 bg-black/50 hover:bg-black/75 text-white/80 rounded-md shadow-xs flex items-center gap-0.5 select-none transition-all duration-150" title="Drag card to reorder position in list">
+                <GripVertical className="w-3 h-3 text-white/90" />
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest px-0.5">Move</span>
+              </div>
+
               {vid.isPlaying && (
                 <div className="absolute top-3.5 left-3.5 z-10 px-3 py-1 bg-red-655 text-white text-[9px] font-black uppercase tracking-wider rounded-full shadow-md animate-pulse flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -855,23 +968,42 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
               {currentStep === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-right-3 duration-100">
                   {/* Option Choice Toggles */}
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         setVideoType('link');
                         setFormError('');
                       }}
-                      className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border text-center transition-all cursor-pointer ${
                         videoType === 'link'
                           ? 'bg-slate-50 border-red-500 shadow-3xs dark:bg-slate-850'
                           : 'bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-500 hover:text-slate-800'
                       }`}
                     >
-                      <Link className={`w-5 h-5 ${videoType === 'link' ? 'text-red-500' : 'text-slate-400'}`} />
-                      <div className="text-left select-none">
-                        <span className="block text-xs font-black text-slate-850 dark:text-white">1. Link option</span>
-                        <span className="block text-[10px] text-slate-400 font-medium">Remote Youtube URL</span>
+                      <Link className={`w-4 h-4 ${videoType === 'link' ? 'text-red-500' : 'text-slate-400'}`} />
+                      <div className="text-center select-none">
+                        <span className="block text-[10px] font-black text-slate-850 dark:text-white">Single Link</span>
+                        <span className="block text-[8px] text-slate-405 font-bold tracking-wider leading-none mt-0.5">YOUTUBE URL</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoType('playlist');
+                        setFormError('');
+                      }}
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border text-center transition-all cursor-pointer ${
+                        videoType === 'playlist'
+                          ? 'bg-slate-50 border-red-500 shadow-3xs dark:bg-slate-850'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <Layers className={`w-4 h-4 ${videoType === 'playlist' ? 'text-red-500' : 'text-slate-400'}`} />
+                      <div className="text-center select-none">
+                        <span className="block text-[10px] font-black text-slate-850 dark:text-white">Playlist IP</span>
+                        <span className="block text-[8px] text-slate-405 font-bold tracking-wider leading-none mt-0.5">CRAWLER</span>
                       </div>
                     </button>
 
@@ -881,22 +1013,22 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                         setVideoType('upload');
                         setFormError('');
                       }}
-                      className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border text-center transition-all cursor-pointer ${
                         videoType === 'upload'
                           ? 'bg-slate-50 border-red-500 shadow-3xs dark:bg-slate-850'
                           : 'bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-500 hover:text-slate-800'
                       }`}
                     >
-                      <Upload className={`w-5 h-5 ${videoType === 'upload' ? 'text-red-500' : 'text-slate-400'}`} />
-                      <div className="text-left select-none">
-                        <span className="block text-xs font-black text-slate-850 dark:text-white">2. Upload option</span>
-                        <span className="block text-[10px] text-slate-400 font-medium">Save to local storage</span>
+                      <Upload className={`w-4 h-4 ${videoType === 'upload' ? 'text-red-500' : 'text-slate-400'}`} />
+                      <div className="text-center select-none">
+                        <span className="block text-[10px] font-black text-slate-850 dark:text-white">Upload MP4</span>
+                        <span className="block text-[8px] text-slate-405 font-bold tracking-wider leading-none mt-0.5">LOCAL DB</span>
                       </div>
                     </button>
                   </div>
 
                   {/* Inputs for Link */}
-                  {videoType === 'link' ? (
+                  {videoType === 'link' && (
                     <div className="space-y-3 pt-2">
                       <div className="space-y-1">
                         <h4 className="text-xs font-black text-slate-800 dark:text-white">
@@ -912,8 +1044,71 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                         />
                       </div>
                     </div>
-                  ) : (
-                    /* Inputs for Upload */
+                  )}
+
+                  {/* Inputs for Playlist */}
+                  {videoType === 'playlist' && (
+                    <div className="space-y-3 pt-1">
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-black text-slate-800 dark:text-white">
+                          Copy & Paste YouTube Playlist Link *
+                        </h4>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="url"
+                            placeholder="e.g. https://www.youtube.com/playlist?list=PL_XxuZ..."
+                            value={importPlaylistUrl}
+                            onChange={(e) => setImportPlaylistUrl(e.target.value)}
+                            className="flex-grow px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950 text-xs font-semibold outline-none focus:border-red-550 text-slate-905 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleFetchPlaylist}
+                            disabled={importStatus === 'loading'}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 text-white text-xs font-black rounded-xl cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
+                          >
+                            {importStatus === 'loading' ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Loading...</span>
+                              </>
+                            ) : (
+                              <span>Sync List</span>
+                            )}
+                          </button>
+                        </div>
+                        {importError && (
+                          <p className="text-[10px] text-red-550 font-bold leading-tight mt-1">⚠️ {importError}</p>
+                        )}
+                      </div>
+
+                      {/* Import Preview results list */}
+                      {importedPreview && (
+                        <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-2 mt-1">
+                          <div className="flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 max-w-[70%] truncate">
+                              📚 {importedPreview.playlistTitle}
+                            </span>
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-600 font-mono font-black px-1.5 py-0.5 rounded-md">
+                              {importedPreview.videos.length} Lectures Found
+                            </span>
+                          </div>
+
+                          <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                            {importedPreview.videos.map((v, i) => (
+                              <div key={v.videoId + i} className="flex gap-2 items-center text-[10px] text-slate-600 dark:text-slate-350 truncate">
+                                <span className="text-[9px] font-mono font-black text-slate-400 shrink-0">#{i+1}</span>
+                                <span className="truncate">{v.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Inputs for Upload */}
+                  {videoType === 'upload' && (
                     <div className="space-y-3 pt-2">
                       <div className="space-y-1">
                         <h4 className="text-xs font-black text-slate-800 dark:text-white">
@@ -947,18 +1142,20 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     </div>
                   )}
 
-                  <div className="space-y-1">
-                    <h4 className="text-xs font-black text-slate-800 dark:text-white">
-                      Custom Video Title *
-                    </h4>
-                    <input
-                      type="text"
-                      placeholder="e.g. Big O Notation Time Complexity explanation"
-                      value={formTitle}
-                      onChange={(e) => setFormTitle(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-xs font-semibold outline-none focus:border-red-500 text-slate-900 dark:text-white"
-                    />
-                  </div>
+                  {videoType !== 'playlist' && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white">
+                        Custom Video Title *
+                      </h4>
+                      <input
+                        type="text"
+                        placeholder="e.g. Big O Notation Time Complexity explanation"
+                        value={formTitle}
+                        onChange={(e) => setFormTitle(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-xs font-semibold outline-none focus:border-red-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

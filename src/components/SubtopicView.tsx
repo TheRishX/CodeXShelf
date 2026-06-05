@@ -3,7 +3,7 @@ import {
   ArrowLeft, FileText, FileCode, Play, Lightbulb, Code2, HelpCircle, 
   Sparkles, Plus, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Link, 
   AlertCircle, Download, Upload, Copy, Check, Eye, Edit3, BookOpen, Map, User, RefreshCw,
-  ClipboardList
+  ClipboardList, Loader2, GripVertical, Layers
 } from 'lucide-react';
 import { 
   Subtopic, Topic, PdfItem, NoteItem, VideoItem, ConceptItem, CodingItem, 
@@ -241,6 +241,16 @@ export function SubtopicView({
   const [pdfFileData, setPdfFileData] = useState<string>('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // YouTube Playlist Importer inside Subtopic state
+  const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
+  const [playlistUrl, setPlaylistUrl] = useState('');
+  const [playlistStatus, setPlaylistStatus] = useState<'idle' | 'loading' | 'success' | 'err'>('idle');
+  const [playlistError, setPlaylistError] = useState('');
+  const [playlistPreview, setPlaylistPreview] = useState<{ playlistTitle: string, videos: any[] } | null>(null);
+
+  // Drag and drop state
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   // Interactive Quiz State metrics
   const [quizAttempts, setQuizAttempts] = useState<{ [quizId: string]: number }>({}); // maps quizId -> selected choice index
   const [revealSolutions, setRevealSolutions] = useState<{ [itemId: string]: boolean }>({});
@@ -280,6 +290,66 @@ export function SubtopicView({
   const [editTrackerCompleted, setEditTrackerCompleted] = useState(false);
   const [editTrackerRevised, setEditTrackerRevised] = useState(false);
   const [editTrackerNotes, setEditTrackerNotes] = useState('');
+
+  const handleFetchPlaylistSubtopic = async () => {
+    if (!playlistUrl.trim()) {
+      setPlaylistError('Please input a valid URL.');
+      setPlaylistStatus('err');
+      return;
+    }
+    setPlaylistStatus('loading');
+    setPlaylistError('');
+    setPlaylistPreview(null);
+    try {
+      const response = await fetch('/api/youtube/playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlistUrl: playlistUrl.trim() })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to parse playlist.');
+      }
+      setPlaylistPreview({
+        playlistTitle: data.playlistTitle,
+        videos: data.videos
+      });
+      setPlaylistStatus('success');
+    } catch (err: any) {
+      setPlaylistError(err.message || 'Error occurred syncing playlist steps.');
+      setPlaylistStatus('err');
+    }
+  };
+
+  const handleSavePlaylistSubtopic = () => {
+    if (!playlistPreview || playlistPreview.videos.length === 0) return;
+    const importedVids = playlistPreview.videos.map((vid, idx) => ({
+      id: `vid-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+      subtopicId: subtopic.id,
+      title: vid.title,
+      url: vid.url,
+      platform: 'youtube' as const,
+      createdAt: new Date().toISOString()
+    }));
+    onUpdateDb({ videos: [...dbState.videos, ...importedVids] });
+    setPlaylistModalOpen(false);
+    setPlaylistUrl('');
+    setPlaylistPreview(null);
+    setPlaylistStatus('idle');
+  };
+
+  const handleVideoReorderSubtopic = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const listVideos = dbState.videos || [];
+    const fromIndex = listVideos.findIndex(v => v.id === draggedId);
+    const toIndex = listVideos.findIndex(v => v.id === targetId);
+    if (fromIndex !== -1 && toIndex !== -1) {
+      const updated = [...listVideos];
+      const [movedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, movedItem);
+      onUpdateDb({ videos: updated });
+    }
+  };
 
   const handleStartEdit = (item: any, field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes' | 'trackers') => {
     setEditingItem({ id: item.id, field });
@@ -1444,6 +1514,16 @@ export function SubtopicView({
               </button>
             )}
 
+            {activeTab === 'videos' && (
+              <button
+                onClick={() => setPlaylistModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white border border-red-700/20 font-bold text-xs uppercase tracking-wider font-mono transition-all cursor-pointer shadow-xs"
+              >
+                <Layers className="w-4 h-4 text-white" />
+                <span>Import Playlist</span>
+              </button>
+            )}
+
             <button
               onClick={() => setModalOpen(true)}
               className="inline-flex items-center gap-1 px-4.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-900 dark:text-white border border-slate-200/50 dark:border-slate-705 font-bold text-xs uppercase tracking-wider font-mono transition-all cursor-pointer"
@@ -2131,9 +2211,34 @@ export function SubtopicView({
               } catch(e) {}
 
               return (
-                <div key={vid.id} className="rounded-2xl border border-gray-150 dark:border-gray-850 overflow-hidden bg-white dark:bg-gray-950/50 flex flex-col justify-between shadow-xs relative group">
+                <div 
+                  key={vid.id} 
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', vid.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverId(vid.id);
+                  }}
+                  onDragLeave={() => {
+                    setDragOverId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const draggedId = e.dataTransfer.getData('text/plain');
+                    handleVideoReorderSubtopic(draggedId, vid.id);
+                    setDragOverId(null);
+                  }}
+                  className={`rounded-2xl border overflow-hidden bg-white dark:bg-gray-950/50 flex flex-col justify-between shadow-xs relative group transition-all duration-205 ${
+                    dragOverId === vid.id
+                      ? 'border-red-500 bg-red-500/5 scale-[1.015]'
+                      : 'border-slate-200 dark:border-slate-800'
+                  }`}
+                >
                   <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <button 
+                      type="button"
                       onClick={() => handleStartEdit(vid, 'videos')}
                       className="p-1.5 rounded-lg bg-gray-900/80 text-stone-300 hover:text-white transition-colors"
                       title="Edit Video URL/Title"
@@ -2141,6 +2246,7 @@ export function SubtopicView({
                       <Edit3 className="w-4 h-4" />
                     </button>
                     <button 
+                      type="button"
                       onClick={() => handleDeleteItem(vid.id, 'videos')}
                       className="p-1.5 rounded-lg bg-gray-900/80 text-gray-400 hover:text-white transition-colors"
                     >
@@ -2169,14 +2275,17 @@ export function SubtopicView({
                   )}
 
                   <div className="p-4">
-                    <h4 className="font-bold text-gray-900 dark:text-white text-sm font-sans line-clamp-1 leading-normal">
-                      {vid.title}
-                    </h4>
+                    <div className="flex items-center justify-between gap-2.5 mb-1">
+                      <h4 className="font-extrabold text-slate-800 dark:text-white text-sm font-sans line-clamp-1 leading-normal flex-1">
+                        {vid.title}
+                      </h4>
+                      <GripVertical className="w-4 h-4 text-slate-400 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Drag to reorder playlist position" />
+                    </div>
                     <a 
                       href={vid.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] text-gray-400 font-mono mt-1 hover:underline truncate block flex items-center gap-1"
+                      className="text-[10px] text-gray-400 font-mono hover:underline truncate block flex items-center gap-1 mt-1"
                     >
                       <Link className="w-3 h-3 shrink-0" />
                       <span className="truncate">{vid.url}</span>
@@ -2523,6 +2632,127 @@ export function SubtopicView({
               >
                 Save Changes
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1.5. YouTube Playlist Importer Modal */}
+      {playlistModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => {
+            setPlaylistModalOpen(false);
+            setPlaylistUrl('');
+            setPlaylistPreview(null);
+            setPlaylistStatus('idle');
+          }} className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs" />
+          
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-y-auto max-h-[85vh] animate-in fade-in zoom-in-95 duration-150 text-left">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-905 dark:text-white flex items-center gap-1.5 font-sans">
+                  <Layers className="w-5 h-5 text-red-500 shrink-0" />
+                  <span>YouTube Playlist Batch Importer</span>
+                </h3>
+                <p className="text-xs text-slate-400 font-medium font-sans">Generate comprehensive educational lessons inside "{subtopic.name}"</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setPlaylistModalOpen(false);
+                  setPlaylistUrl('');
+                  setPlaylistPreview(null);
+                  setPlaylistStatus('idle');
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400 cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 font-mono">
+                  Paste YouTube Playlist Link or List ID *
+                </label>
+                <div className="flex gap-2 mt-1.5">
+                  <input
+                    type="url"
+                    placeholder="e.g. https://www.youtube.com/playlist?list=PL..."
+                    value={playlistUrl}
+                    onChange={(e) => setPlaylistUrl(e.target.value)}
+                    className="flex-grow px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-805 bg-slate-50/50 dark:bg-slate-950 text-xs font-semibold outline-none focus:border-red-500 text-slate-900 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleFetchPlaylistSubtopic}
+                    disabled={playlistStatus === 'loading'}
+                    className="px-4 py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shrink-0 transition-opacity cursor-pointer select-none"
+                  >
+                    {playlistStatus === 'loading' ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Fetching...</span>
+                      </>
+                    ) : (
+                      <span>Crawl</span>
+                    )}
+                  </button>
+                </div>
+                {playlistError && (
+                  <p className="text-[10px] text-red-500 font-semibold leading-tight mt-1.5">⚠️ {playlistError}</p>
+                )}
+              </div>
+
+              {playlistPreview && (
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-2 mt-3 animate-in fade-in slide-in-from-bottom-2 duration-100">
+                  <div className="flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                    <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 max-w-[70%] truncate font-sans">
+                      📚 {playlistPreview.playlistTitle}
+                    </span>
+                    <span className="text-[9px] bg-emerald-500/10 text-emerald-600 font-mono font-black px-1.5 py-0.5 rounded-md">
+                      {playlistPreview.videos.length} Lectures Found
+                    </span>
+                  </div>
+
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                    {playlistPreview.videos.map((v, i) => (
+                      <div key={v.videoId + i} className="flex gap-2 items-center text-[10px] text-slate-600 dark:text-slate-355 truncate">
+                        <span className="text-[9px] font-mono font-black bg-slate-100 dark:bg-slate-800 p-0.5 rounded shrink-0">#{i+1}</span>
+                        <span className="truncate font-sans font-medium">{v.title}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[9px] text-slate-400 font-medium select-none text-center pt-2 italic leading-none">
+                    All crawled steps will be linked to this subtask path.
+                  </p>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlaylistModalOpen(false);
+                    setPlaylistUrl('');
+                    setPlaylistPreview(null);
+                    setPlaylistStatus('idle');
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs transition-colors cursor-pointer dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePlaylistSubtopic}
+                  disabled={!playlistPreview || playlistPreview.videos.length === 0}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-250 disabled:dark:bg-slate-800 text-white font-black rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Import Playlist</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
