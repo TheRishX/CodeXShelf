@@ -316,167 +316,315 @@ Avoid dry or generic summaries. Craft deep senior-level insight with complete co
 });
 
 // 4. YouTube Playlist Scraper with Intel Fallback
-app.get("/api/youtube/playlist", (req, res) => {
-  res.json({ success: true, message: "YouTube Playlist API is active." });
+app.get("/api/youtube/playlist", async (req, res) => {
+  const listIdQuery = req.query.list || req.query.playlistId || req.query.playlistUrl;
+  const requestedToken = req.query.pageToken || req.query.nextPageToken || undefined;
+
+  if (!listIdQuery) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Please provide a 'list' query parameter (YouTube playlist ID/URL)." 
+    });
+  }
+
+  try {
+    const data = await fetchPlaylistDetailsAndItems(String(listIdQuery), requestedToken ? String(requestedToken) : undefined);
+    return res.status(200).json(data);
+  } catch (err: any) {
+    console.error("[YouTube Playlist GET Express Error]", err);
+    return res.status(500).json({ success: false, error: err.message || "Failed to process GET response" });
+  }
 });
 
 app.post("/api/youtube/playlist", async (req, res) => {
-  const { playlistUrl } = req.body;
-  if (!playlistUrl) {
-    return res.status(400).json({ success: false, error: "Please provide a YouTube playlist URL." });
+  const { playlistUrl, playlistId, pageToken, nextPageToken } = req.body || {};
+  const targetUrlOrId = playlistUrl || playlistId;
+  const requestedToken = pageToken || nextPageToken || undefined;
+
+  if (!targetUrlOrId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Please provide a 'playlistUrl' or 'playlistId' in the request body." 
+    });
   }
 
-  // extract list parameter
+  try {
+    const data = await fetchPlaylistDetailsAndItems(targetUrlOrId, requestedToken);
+    return res.status(200).json(data);
+  } catch (err: any) {
+    console.error("[YouTube Playlist POST Express Error]", err);
+    return res.status(500).json({ success: false, error: err.message || "Failed to process POST response" });
+  }
+});
+
+// Resilient core helper servicing both GET and POST requests
+async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: string) {
+  // 1. Extract clean playlistId
   let playlistId = "";
   try {
-    const url = new URL(playlistUrl);
+    const url = new URL(inputStr);
     playlistId = url.searchParams.get("list") || "";
   } catch (e) {
-    // try matching PL...
-    const match = playlistUrl.match(/[&?]list=([^&]+)/) || playlistUrl.match(/list=([^&]+)/);
+    const match = inputStr.match(/[&?]list=([^&]+)/) || inputStr.match(/list=([^&]+)/);
     if (match) playlistId = match[1];
   }
 
-  // Raw playlist ID input
-  if (!playlistId && playlistUrl.match(/^PL[a-zA-Z0-9_-]+$/)) {
-    playlistId = playlistUrl;
+  // Fallback if input is already clean PL ID
+  if (!playlistId && inputStr.match(/^PL[a-zA-Z0-9_-]+$/)) {
+    playlistId = inputStr;
   }
 
   if (!playlistId) {
-    return res.status(400).json({ success: false, error: "Could not extract a valid YouTube Playlist ID (e.g. 'list=PL...')" });
+    throw new Error("Could not extract a valid YouTube Playlist ID (e.g., list=PL...)");
   }
 
-  try {
-    console.log(`[YouTube Playlist Fetcher] Fetching playlist ID: ${playlistId}`);
-    const response = await fetch(`https://www.youtube.com/playlist?list=${playlistId}&hl=en`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+  // 2. Resolve API Keys for official YouTube API lookup
+  const ytApiKey = process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || process.env.YOUTUBE_DEVELOPER_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+
+  let playlistTitle = "Curated YouTube Course";
+  let videos: any[] = [];
+  let nextToken: string | null = null;
+  let sourceOfData = "";
+
+  if (ytApiKey) {
+    console.log(`[YouTube Playlist Fetcher] Utilizing official YouTube API key for ID: ${playlistId}`);
+    try {
+      // A. Fetch playlist title list metadata
+      const metaRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${ytApiKey}`
+      );
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        if (metaData.items && metaData.items[0]) {
+          playlistTitle = metaData.items[0].snippet?.title || "Curated YouTube Course";
+        }
+      }
+
+      // B. Fetch playlist list items
+      if (requestedToken) {
+        // Fetch only single requested page
+        const itemsRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,status,contentDetails&maxResults=50&playlistId=${playlistId}&pageToken=${requestedToken}&key=${ytApiKey}`
+        );
+        if (itemsRes.ok) {
+          const itemsData = await itemsRes.json();
+          nextToken = itemsData.nextPageToken || null;
+          const items = itemsData.items || [];
+          for (const item of items) {
+            const snip = item.snippet;
+            const status = item.status;
+            if (!snip) continue;
+            
+            // Filter deleted or private videos
+            const videoTitle = snip.title || "";
+            const isPrivate = status?.privacyStatus === "private" || status?.privacyStatus === "privacyStatusUnspecified";
+            const isDeleted = videoTitle === "Deleted video" || videoTitle === "Private video";
+            if (isDeleted || isPrivate) continue;
+
+            const videoId = snip.resourceId?.videoId;
+            if (!videoId) continue;
+
+            const thumbnail = snip.thumbnails?.maxres?.url || snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || snip.thumbnails?.default?.url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+            videos.push({
+              videoId,
+              title: videoTitle,
+              thumbnail,
+              description: snip.description || `Lecture tutorial step for video ID ${videoId}`,
+              url: `https://www.youtube.com/watch?v=${videoId}`
+            });
+          }
+          sourceOfData = "official_youtube_api_paginated";
+        } else {
+          throw new Error(`YouTube API items fetch returned status: ${itemsRes.status}`);
+        }
+      } else {
+        // Fetch recursively up to 150 items for user convenience
+        let currentToken: string | undefined = undefined;
+        let pagesCount = 0;
+        
+        while (pagesCount < 3) {
+          const pageParam = currentToken ? `&pageToken=${currentToken}` : "";
+          const itemsRes = await fetch(
+            `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,status,contentDetails&maxResults=50&playlistId=${playlistId}${pageParam}&key=${ytApiKey}`
+          );
+          
+          if (!itemsRes.ok) break;
+          const itemsData = await itemsRes.json();
+          const items = itemsData.items || [];
+          
+          for (const item of items) {
+            const snip = item.snippet;
+            const status = item.status;
+            if (!snip) continue;
+            
+            const videoTitle = snip.title || "";
+            const isPrivate = status?.privacyStatus === "private" || status?.privacyStatus === "privacyStatusUnspecified";
+            const isDeleted = videoTitle === "Deleted video" || videoTitle === "Private video";
+            if (isDeleted || isPrivate) continue;
+
+            const videoId = snip.resourceId?.videoId;
+            if (!videoId) continue;
+
+            const thumbnail = snip.thumbnails?.maxres?.url || snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || snip.thumbnails?.default?.url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+            videos.push({
+              videoId,
+              title: videoTitle,
+              thumbnail,
+              description: snip.description || `Lecture tutorial step for video ID ${videoId}`,
+              url: `https://www.youtube.com/watch?v=${videoId}`
+            });
+          }
+
+          currentToken = itemsData.nextPageToken;
+          nextToken = currentToken || null;
+          if (!currentToken) break;
+          pagesCount++;
+        }
+        sourceOfData = "official_youtube_api";
+      }
+
+    } catch (apiErr) {
+      console.error("[YouTube Playlist Fetcher] Official YouTube API call failed, attempting Scraping Fallback:", apiErr);
+    }
+  }
+
+  // 3. HTML Scraping Fallback (No API Keys available or API Quota limited)
+  if (videos.length === 0) {
+    console.log(`[YouTube Playlist Fetcher] Running raw HTML scraper fallback for ID: ${playlistId}`);
+    try {
+      const response = await fetch(`https://www.youtube.com/playlist?list=${playlistId}&hl=en`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        }
+      });
+
+      if (response.ok) {
+        const html = await response.text();
+        const match = html.match(/ytInitialData\s*=\s*({[\s\S]+?});\s*<\/script>/) || html.match(/ytInitialData\s*=\s*({[\s\S]+?});/);
+        
+        if (match) {
+          const jsonStr = match[1];
+          const data = JSON.parse(jsonStr);
+          playlistTitle = data.metadata?.playlistMetadataRenderer?.title || "Curated YouTube Course";
+
+          const playlistVideoListRenderer = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer;
+          const contents = playlistVideoListRenderer?.contents || [];
+
+          for (const item of contents) {
+            const videoRenderer = item.playlistVideoRenderer;
+            if (!videoRenderer) continue;
+            const videoId = videoRenderer.videoId;
+            if (!videoId) continue;
+            
+            const videoTitle = videoRenderer.title?.runs?.[0]?.text || videoRenderer.title?.simpleText || "Untitled Lecture Step";
+            if (videoTitle === "Deleted video" || videoTitle === "Private video") continue;
+
+            const thumbnail = videoRenderer.thumbnail?.thumbnails?.[2]?.url || videoRenderer.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+            const description = videoRenderer.descriptionSnippet?.runs?.[0]?.text || `Reference lecture for video ID ${videoId}`;
+
+            videos.push({
+              videoId,
+              title: videoTitle,
+              thumbnail,
+              description,
+              url: `https://www.youtube.com/watch?v=${videoId}`
+            });
+          }
+          sourceOfData = "youtube_html_scraping";
+          console.log(`[YouTube Playlist Fetcher] Scraped ${videos.length} videos from html layout.`);
+        }
+      }
+    } catch (scrapingErr) {
+      console.error("[YouTube Playlist Fetcher] Scraping failed:", scrapingErr);
+    }
+  }
+
+  // 4. Intelligent syllabus reconstruction generator using Gemini (Geo-blocked/rate-limited fallback)
+  if (videos.length === 0) {
+    console.log("[YouTube Playlist Fetcher] Scraping and official API returned no results. Launching Gemini AI fallback...");
+    if (!geminiApiKey) {
+      throw new Error("YouTube API and web crawler could not retrieve this playlist. Please configure GEMINI_API_KEY in the Settings menu to resolve missing playlist information instantly using intelligent fallback.");
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: geminiApiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
-    }
+    const prompt = `You are a professional educational curriculum planner and YouTube playlist restorer. The user wants to import a YouTube Playlist. 
+The Playlist URL or list ID refers to: "${inputStr}".
+Please inspect the terms/slugs/words in this URL or playlist state to understand what academic or programming topic of information is covered. 
+Then, generate a high-yield syllabus sequence of 8-12 tutorial/lecture video steps that perfectly corresponds to this playlist context.
+Create realistic 11-character YouTube video IDs.
+Make sure the video titles are chronological, highly informative, and academic. Set description notes beautifully.
 
-    const html = await response.text();
-    const match = html.match(/ytInitialData\s*=\s*({[\s\S]+?});\s*<\/script>/) || html.match(/ytInitialData\s*=\s*({[\s\S]+?});/);
-    
-    let scrapedVideos: any[] = [];
-    let playlistTitle = "Curated YouTube Course";
-
-    if (match) {
-      try {
-        const jsonStr = match[1];
-        const data = JSON.parse(jsonStr);
-        playlistTitle = data.metadata?.playlistMetadataRenderer?.title || "Curated YouTube Course";
-
-        const playlistVideoListRenderer = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer;
-        const contents = playlistVideoListRenderer?.contents || [];
-
-        for (const item of contents) {
-          const videoRenderer = item.playlistVideoRenderer;
-          if (!videoRenderer) continue;
-          const videoId = videoRenderer.videoId;
-          if (!videoId) continue;
-          const title = videoRenderer.title?.runs?.[0]?.text || videoRenderer.title?.simpleText || "Untitled Lecture Step";
-          const thumbnail = videoRenderer.thumbnail?.thumbnails?.[2]?.url || videoRenderer.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-          const description = videoRenderer.descriptionSnippet?.runs?.[0]?.text || `Reference lecture for video ID ${videoId}`;
-
-          scrapedVideos.push({
-            videoId,
-            title,
-            thumbnail,
-            description,
-            url: `https://www.youtube.com/watch?v=${videoId}`
-          });
-        }
-        console.log(`[YouTube Playlist Fetcher] Parsed ${scrapedVideos.length} videos successfully.`);
-      } catch (parseErr) {
-        console.error("[YouTube Playlist Fetcher] JSON parsing failed, resorting to intelligent fallback:", parseErr);
-      }
-    }
-
-    // Fallback if scraping did not return any videos or failed (Geo-blocked/rate-limited inside container)
-    if (scrapedVideos.length === 0) {
-      console.log("[YouTube Playlist Fetcher] Scraping list returned empty. Triggering Intelligent fallback with Gemini API.");
-      if (!ai) {
-        return res.status(503).json({
-          success: false,
-          error: "Your playlist scraper could not crawl YouTube directly, and Gemini is not configured in Settings to generate a syllabus. Please configure GEMINI_API_KEY."
-        });
-      }
-
-      const prompt = `You are a professional educational curriculum planner and YouTube playlist restorer. The user wants to import a YouTube Playlist. 
-The Playlist URL or list ID is "${playlistUrl}".
-Please inspect the terms in this URL to understand what topic is covered. Then generate a high-yield syllabus sequence of 8-12 tutorial/lecture video steps that corresponds to this playlist context.
-Give them realistic 11-character YouTube video IDs.
-Make sure the video titles are chronological, highly informative, and academic. Set the descriptions beautifully to act as study notes.
-
-Return a JSON with the following structure:
+Return standard JSON:
 {
-  "playlistTitle": "A descriptive academic title for this course playlist (e.g. 'Ultimate Full Stack Dev & API Systems')",
+  "playlistTitle": "A descriptive beautiful title for this course playlist (e.g. 'Ultimate Full Stack Dev & API Systems')",
   "videos": [
     {
-      "videoId": "11-char ID e.g. PLtSg86T2e0 or other beautiful hashes",
-      "title": "Clear tutorial title (e.g. 'Step 1: Setting up the Express and Vite bundler')",
+      "videoId": "11-char ID e.g. dQw4w9WgXcQ or other simulated hashes",
+      "title": "Topic tutorial title (e.g. 'Section 1: Setting up the server environment')",
       "thumbnail": "https://img.youtube.com/vi/{videoId}/0.jpg",
-      "description": "Explains study criteria and highlights to watch out for.",
+      "description": "Critical study criteria, key takeaways, and what notes to document.",
       "url": "https://www.youtube.com/watch?v={videoId}"
     }
   ]
 }`;
 
-      const geminiResponse = await generateWithRetry({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              playlistTitle: { type: Type.STRING },
-              videos: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    videoId: { type: Type.STRING },
-                    title: { type: Type.STRING },
-                    thumbnail: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    url: { type: Type.STRING }
-                  },
-                  required: ["videoId", "title", "thumbnail", "url"]
-                }
+    const geminiResponse = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            playlistTitle: { type: Type.STRING },
+            videos: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  videoId: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  thumbnail: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  url: { type: Type.STRING }
+                },
+                required: ["videoId", "title", "thumbnail", "url"]
               }
-            },
-            required: ["playlistTitle", "videos"]
-          }
+            }
+          },
+          required: ["playlistTitle", "videos"]
         }
-      });
-
-      const textResult = geminiResponse.text || "{}";
-      const parsed = JSON.parse(textResult.trim());
-      return res.json({
-        success: true,
-        source: "gemini_intel_fallback",
-        playlistTitle: parsed.playlistTitle || "Imported Course Syllabus",
-        videos: parsed.videos || []
-      });
-    }
-
-    res.json({
-      success: true,
-      source: "youtube_html_scraping",
-      playlistTitle,
-      videos: scrapedVideos
+      }
     });
 
-  } catch (error: any) {
-    console.error("[YouTube Playlist API Error]", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to fetch YouTube playlist" });
+    const textResult = geminiResponse.text || "{}";
+    const parsed = JSON.parse(textResult.trim());
+    
+    return {
+      success: true,
+      source: "gemini_intel_fallback",
+      playlistTitle: parsed.playlistTitle || "Imported Course Syllabus (AI Restored)",
+      videos: parsed.videos || []
+    };
   }
-});
+
+  return {
+    success: true,
+    source: sourceOfData,
+    playlistTitle,
+    videos,
+    nextPageToken: nextToken
+  };
+}
 
 // Serve frontend assets in production or mount Vite middleware in development
 async function startServer() {

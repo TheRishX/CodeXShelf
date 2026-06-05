@@ -1,50 +1,72 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Pages Router / Vercel Serverless Function Handler
-export default async function handler(req: any, res: any) {
-  console.log(`[YouTube Playlist Pages Routing] Received ${req.method} request`);
-
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  let inputStr = "";
-  let requestedToken: string | undefined = undefined;
-
-  if (req.method === "GET") {
-    inputStr = req.query?.list || req.query?.playlistId || req.query?.playlistUrl;
-    requestedToken = req.query?.pageToken || req.query?.nextPageToken || undefined;
-  } else if (req.method === "POST") {
-    const bodyObj = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
-    inputStr = bodyObj?.playlistUrl || bodyObj?.playlistId;
-    requestedToken = bodyObj?.pageToken || bodyObj?.nextPageToken || undefined;
-  } else {
-    return res.status(405).json({ success: false, error: "Method Not Allowed" });
-  }
-
-  if (!inputStr) {
-    return res.status(400).json({ 
-      success: false, 
-      error: req.method === "GET" 
-        ? "Please provide a 'list' query parameter (YouTube playlist ID/URL)." 
-        : "Please provide a 'playlistUrl' or 'playlistId' in the request body."
-    });
-  }
-
+// Standard Next.js App Router exports
+export async function GET(request: Request) {
+  console.log("[YouTube Playlist App Router] Received GET request");
   try {
-    const data = await fetchPlaylistDetailsAndItems(inputStr, requestedToken);
-    return res.status(200).json(data);
+    const { searchParams } = new URL(request.url);
+    const listIdQuery = searchParams.get("list") || searchParams.get("playlistId") || searchParams.get("playlistUrl");
+    const requestedToken = searchParams.get("pageToken") || searchParams.get("nextPageToken") || undefined;
+
+    if (!listIdQuery) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Please provide a 'list' query parameter (YouTube playlist ID/URL)." 
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const data = await fetchPlaylistDetailsAndItems(listIdQuery, requestedToken);
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
   } catch (err: any) {
-    console.error("[YouTube Playlist Pages API Error]", err);
-    return res.status(500).json({ success: false, error: err.message || "Internal server error occurred." });
+    console.error("[YouTube Playlist GET Error]", err);
+    return new Response(JSON.stringify({ success: false, error: err.message || "Failed to process GET response" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }
 
+export async function POST(request: Request) {
+  console.log("[YouTube Playlist App Router] Received POST request");
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { playlistUrl, playlistId, pageToken, nextPageToken } = body || {};
+    const targetUrlOrId = playlistUrl || playlistId;
+    const requestedToken = pageToken || nextPageToken || undefined;
+
+    if (!targetUrlOrId) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Please provide a 'playlistUrl' or 'playlistId' in the request body." 
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const data = await fetchPlaylistDetailsAndItems(targetUrlOrId, requestedToken);
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (err: any) {
+    console.error("[YouTube Playlist POST Error]", err);
+    return new Response(JSON.stringify({ success: false, error: err.message || "Failed to process POST response" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
+
+// Resilient core helper servicing both GET and POST requests
 async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: string) {
+  // 1. Extract clean playlistId
   let playlistId = "";
   try {
     const url = new URL(inputStr);
@@ -54,6 +76,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     if (match) playlistId = match[1];
   }
 
+  // Fallback if input is already clean PL ID
   if (!playlistId && inputStr.match(/^PL[a-zA-Z0-9_-]+$/)) {
     playlistId = inputStr;
   }
@@ -62,6 +85,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     throw new Error("Could not extract a valid YouTube Playlist ID (e.g., list=PL...)");
   }
 
+  // 2. Resolve API Keys for official YouTube API lookup
   const ytApiKey = process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || process.env.YOUTUBE_DEVELOPER_KEY;
   const geminiApiKey = process.env.GEMINI_API_KEY;
 
@@ -73,6 +97,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
   if (ytApiKey) {
     console.log(`[YouTube Playlist Fetcher] Utilizing official YouTube API key for ID: ${playlistId}`);
     try {
+      // A. Fetch playlist title list metadata
       const metaRes = await fetch(
         `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${ytApiKey}`
       );
@@ -83,7 +108,9 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
         }
       }
 
+      // B. Fetch playlist list items
       if (requestedToken) {
+        // Fetch only single requested page
         const itemsRes = await fetch(
           `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,status,contentDetails&maxResults=50&playlistId=${playlistId}&pageToken=${requestedToken}&key=${ytApiKey}`
         );
@@ -96,6 +123,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
             const status = item.status;
             if (!snip) continue;
             
+            // Filter deleted or private videos
             const videoTitle = snip.title || "";
             const isPrivate = status?.privacyStatus === "private" || status?.privacyStatus === "privacyStatusUnspecified";
             const isDeleted = videoTitle === "Deleted video" || videoTitle === "Private video";
@@ -118,6 +146,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
           throw new Error(`YouTube API items fetch returned status: ${itemsRes.status}`);
         }
       } else {
+        // Fetch recursively up to 150 items for user convenience
         let currentToken: string | undefined = undefined;
         let pagesCount = 0;
         
@@ -167,12 +196,13 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     }
   }
 
+  // 3. HTML Scraping Fallback (No API Keys available or API Quota limited)
   if (videos.length === 0) {
     console.log(`[YouTube Playlist Fetcher] Running raw HTML scraper fallback for ID: ${playlistId}`);
     try {
       const response = await fetch(`https://www.youtube.com/playlist?list=${playlistId}&hl=en`, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, htmLink, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
         }
       });
 
@@ -217,6 +247,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     }
   }
 
+  // 4. Intelligent syllabus reconstruction generator using Gemini (Geo-blocked/rate-limited fallback)
   if (videos.length === 0) {
     console.log("[YouTube Playlist Fetcher] Scraping and official API returned no results. Launching Gemini AI fallback...");
     if (!geminiApiKey) {

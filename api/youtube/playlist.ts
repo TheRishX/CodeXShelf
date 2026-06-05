@@ -1,9 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Pages Router / Vercel Serverless Function Handler
+// Standard Pages Router / Vercel Serverless Function handler
 export default async function handler(req: any, res: any) {
-  console.log(`[YouTube Playlist Pages Routing] Received ${req.method} request`);
+  console.log(`[YouTube Playlist Vercel API] Received ${req.method} request`);
 
+  // CORS Headers support
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -19,6 +20,7 @@ export default async function handler(req: any, res: any) {
     inputStr = req.query?.list || req.query?.playlistId || req.query?.playlistUrl;
     requestedToken = req.query?.pageToken || req.query?.nextPageToken || undefined;
   } else if (req.method === "POST") {
+    // some frameworks pass body parsed, some raw
     const bodyObj = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     inputStr = bodyObj?.playlistUrl || bodyObj?.playlistId;
     requestedToken = bodyObj?.pageToken || bodyObj?.nextPageToken || undefined;
@@ -39,12 +41,14 @@ export default async function handler(req: any, res: any) {
     const data = await fetchPlaylistDetailsAndItems(inputStr, requestedToken);
     return res.status(200).json(data);
   } catch (err: any) {
-    console.error("[YouTube Playlist Pages API Error]", err);
+    console.error("[YouTube Playlist Pages/Vercel API Server Error]", err);
     return res.status(500).json({ success: false, error: err.message || "Internal server error occurred." });
   }
 }
 
+// Resilient core helper servicing both GET and POST requests
 async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: string) {
+  // 1. Extract clean playlistId
   let playlistId = "";
   try {
     const url = new URL(inputStr);
@@ -54,6 +58,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     if (match) playlistId = match[1];
   }
 
+  // Fallback if input is already clean PL ID
   if (!playlistId && inputStr.match(/^PL[a-zA-Z0-9_-]+$/)) {
     playlistId = inputStr;
   }
@@ -62,6 +67,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     throw new Error("Could not extract a valid YouTube Playlist ID (e.g., list=PL...)");
   }
 
+  // 2. Resolve API Keys for official YouTube API lookup
   const ytApiKey = process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || process.env.YOUTUBE_DEVELOPER_KEY;
   const geminiApiKey = process.env.GEMINI_API_KEY;
 
@@ -73,6 +79,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
   if (ytApiKey) {
     console.log(`[YouTube Playlist Fetcher] Utilizing official YouTube API key for ID: ${playlistId}`);
     try {
+      // A. Fetch playlist title list metadata
       const metaRes = await fetch(
         `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${ytApiKey}`
       );
@@ -83,7 +90,9 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
         }
       }
 
+      // B. Fetch playlist list items
       if (requestedToken) {
+        // Fetch only single requested page
         const itemsRes = await fetch(
           `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,status,contentDetails&maxResults=50&playlistId=${playlistId}&pageToken=${requestedToken}&key=${ytApiKey}`
         );
@@ -96,6 +105,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
             const status = item.status;
             if (!snip) continue;
             
+            // Filter deleted or private videos
             const videoTitle = snip.title || "";
             const isPrivate = status?.privacyStatus === "private" || status?.privacyStatus === "privacyStatusUnspecified";
             const isDeleted = videoTitle === "Deleted video" || videoTitle === "Private video";
@@ -118,6 +128,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
           throw new Error(`YouTube API items fetch returned status: ${itemsRes.status}`);
         }
       } else {
+        // Fetch recursively up to 150 items for user convenience
         let currentToken: string | undefined = undefined;
         let pagesCount = 0;
         
@@ -167,6 +178,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     }
   }
 
+  // 3. HTML Scraping Fallback (No API Keys available or API Quota limited)
   if (videos.length === 0) {
     console.log(`[YouTube Playlist Fetcher] Running raw HTML scraper fallback for ID: ${playlistId}`);
     try {
@@ -217,6 +229,7 @@ async function fetchPlaylistDetailsAndItems(inputStr: string, requestedToken?: s
     }
   }
 
+  // 4. Intelligent syllabus reconstruction generator using Gemini (Geo-blocked/rate-limited fallback)
   if (videos.length === 0) {
     console.log("[YouTube Playlist Fetcher] Scraping and official API returned no results. Launching Gemini AI fallback...");
     if (!geminiApiKey) {

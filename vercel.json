@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/youtube/playlist",
+      "destination": "/api/youtube/playlist.ts"
+    },
+    {
+      "source": "/api/gemini/generate",
+      "destination": "/api/gemini/generate.ts"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
