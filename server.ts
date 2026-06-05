@@ -316,6 +316,10 @@ Avoid dry or generic summaries. Craft deep senior-level insight with complete co
 });
 
 // 4. YouTube Playlist Scraper with Intel Fallback
+app.get("/api/youtube/playlist", (req, res) => {
+  res.json({ success: true, message: "YouTube Playlist API is active." });
+});
+
 app.post("/api/youtube/playlist", async (req, res) => {
   const { playlistUrl } = req.body;
   if (!playlistUrl) {
