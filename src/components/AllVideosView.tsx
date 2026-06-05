@@ -3,7 +3,10 @@ import {
   Play, Search, Filter, Video, ExternalLink, Trash2, 
   Sparkles, Plus, AlertCircle, RefreshCw, Layers,
   X, ArrowLeft, ArrowRight, Check, Upload, Link, FileVideo,
-  Star, Tv, Flame, Trophy, CheckCircle2, Award, Loader2, GripVertical
+  Star, Tv, Flame, Trophy, CheckCircle2, Award, Loader2, GripVertical,
+  Eye, Clock, Calendar, Zap, AlertTriangle, ShieldCheck, ListMusic,
+  Power, PauseCircle, PlayCircle, Settings, SlidersHorizontal, Info, CheckCircle,
+  Radio, XCircle, History
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { DatabaseState, VideoItem, Subtopic, Topic } from '../types';
@@ -17,10 +20,19 @@ interface AllVideosViewProps {
 export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideosViewProps) {
   const { topics, subtopics } = dbState;
   const videos = dbState.videos || [];
+  const youtubeSources = dbState.youtubeSources || [];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('all');
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
+
+  // Enterprise filtering & sorting
+  const [selectedDuration, setSelectedDuration] = useState<string>('all');
+  const [selectedSort, setSelectedSort] = useState<string>('imported-desc');
+
+  // Background sync tracking states
+  const [activeJobs, setActiveJobs] = useState<any[]>([]);
+  const [syncStatusMap, setSyncStatusMap] = useState<Record<string, 'idle' | 'syncing' | 'error' | 'success'>>({});
 
   // 2-step beautiful modal wizard states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,6 +46,9 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
   // Playlist Importer Specific State
   const [importPlaylistUrl, setImportPlaylistUrl] = useState('');
+  const [rangeMode, setRangeMode] = useState<'all' | 'custom'>('all');
+  const [rangeStart, setRangeStart] = useState<number>(1);
+  const [rangeEnd, setRangeEnd] = useState<number>(10);
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'success' | 'err'>('idle');
   const [importError, setImportError] = useState('');
   const [importedPreview, setImportedPreview] = useState<{ playlistTitle: string, videos: any[] } | null>(null);
@@ -51,6 +66,171 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
   // Local object URL resolution map for browser session
   const [resolvedVideoUrls, setResolvedVideoUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Real-time Sync & Polling Engine ---
+  const syncLocalAndRemoteStore = async () => {
+    try {
+      const res = await fetch('/api/data');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          onUpdateDb({
+            youtubeSources: json.data.youtubeSources || [],
+            youtubeJobs: json.data.youtubeJobs || [],
+            videos: json.data.videos || []
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error synchronizing client memory store is expected offline:', e);
+    }
+  };
+
+  const pollJobs = async () => {
+    try {
+      const res = await fetch('/api/youtube/jobs');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.jobs) {
+          setActiveJobs(json.jobs);
+          
+          // If any job transitions, trigger a silent database reload
+          const activeOrJustDone = json.jobs.some((job: any) => 
+            ['starting', 'importing', 'syncing'].includes(job.status) || 
+            (job.status === 'completed' && Date.now() - new Date(job.updatedAt).getTime() < 5000)
+          );
+          if (activeOrJustDone) {
+            await syncLocalAndRemoteStore();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching server jobs tracker context:', e);
+    }
+  };
+
+  useEffect(() => {
+    pollJobs();
+    const interval = setInterval(pollJobs, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- Enterprise Sync Operations Handlers ---
+  const handleForceSyncNow = async (sourceId: string) => {
+    setSyncStatusMap(prev => ({ ...prev, [sourceId]: 'syncing' }));
+    try {
+      const res = await fetch('/api/youtube/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSyncStatusMap(prev => ({ ...prev, [sourceId]: 'success' }));
+        pollJobs();
+        setTimeout(() => {
+          setSyncStatusMap(prev => ({ ...prev, [sourceId]: 'idle' }));
+        }, 3000);
+      } else {
+        setSyncStatusMap(prev => ({ ...prev, [sourceId]: 'error' }));
+        alert(`Failed to trigger synchronization task: ${data.error || 'Server error occurred'}`);
+      }
+    } catch {
+      setSyncStatusMap(prev => ({ ...prev, [sourceId]: 'error' }));
+    }
+  };
+
+  const handleDeleteSource = async (sourceId: string, keepVideos: boolean) => {
+    if (!confirm(`Are you sure you want to delete this YouTube sync source? This will stop automatic background syncs.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/youtube/source?sourceId=${encodeURIComponent(sourceId)}&keepVideos=${keepVideos}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await syncLocalAndRemoteStore();
+      } else {
+        alert(`Failed to delete tracked source: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Internal network transmission error during source removal.');
+    }
+  };
+
+  const handleUpdateSourceSyncInterval = async (sourceId: string, interval: string) => {
+    try {
+      const res = await fetch('/api/youtube/source/interval', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId, interval })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await syncLocalAndRemoteStore();
+      } else {
+        alert(data.error || 'Failed to update schedule interval.');
+      }
+    } catch (e) {
+      alert('Could not update synchronization interval due to connection timeout.');
+    }
+  };
+
+  const handleToggleJobPause = async (jobId: string) => {
+    try {
+      const job = activeJobs.find(j => j.id === jobId);
+      const nextAction = job?.status === 'paused' ? 'resume' : 'pause';
+      const res = await fetch('/api/youtube/jobs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, action: nextAction })
+      });
+      if (res.ok) {
+        pollJobs();
+      }
+    } catch (e) {
+      console.error('Failed to change background job pause/active state', e);
+    }
+  };
+
+  const handleCancelJob = async (jobId: string) => {
+    try {
+      const res = await fetch('/api/youtube/jobs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, action: 'cancel' })
+      });
+      if (res.ok) {
+        pollJobs();
+      }
+    } catch (e) {
+      console.error('Failed to cancel active synchronization task', e);
+    }
+  };
+
+  // --- Visual Meta Formatting Helpers ---
+  const formatDuration = (sec?: number) => {
+    if (!sec) return '';
+    const hrs = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
+    const secs = sec % 60;
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatViews = (views?: number) => {
+    if (!views) return '';
+    if (views >= 1000000) {
+      return `${(views / 1000000).toFixed(1)}M views`;
+    }
+    if (views >= 1000) {
+      return `${(views / 1000).toFixed(0)}K views`;
+    }
+    return `${views} views`;
+  };
 
   // IndexedDB Utilities for strictly local storage of video binaries
   const openIndexedDB = (): Promise<IDBDatabase> => {
@@ -268,30 +448,46 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
     setFormError('');
 
     if (videoType === 'playlist') {
-      if (!importedPreview || importedPreview.videos.length === 0) {
-        setFormError('Please import playlist videos first.');
+      if (!importPlaylistUrl.trim()) {
+        setFormError('Please enter a YouTube Channel, Playlist, or Video link.');
         return;
       }
       if (!formSubtopicId) {
-        setFormError('Please associate this resource with a subtopic page.');
+        setFormError('Please associate this tracking source with a subtopic page.');
         return;
       }
 
-      const importedVids: VideoItem[] = importedPreview.videos.map((vid, idx) => ({
-        id: `vid-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-        subtopicId: formSubtopicId,
-        title: vid.title,
-        url: vid.url,
-        platform: 'youtube',
-        createdAt: new Date().toISOString()
-      }));
-
-      onUpdateDb({ videos: [...videos, ...importedVids] });
-      setIsModalOpen(false);
-      setImportPlaylistUrl('');
-      setImportedPreview(null);
-      setImportStatus('idle');
-      return;
+      setImportStatus('loading');
+      try {
+        const res = await fetch('/api/youtube/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceUrl: importPlaylistUrl.trim(),
+            subtopicId: formSubtopicId,
+            rangeMode,
+            rangeStart,
+            rangeEnd
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setImportStatus('success');
+          pollJobs();
+          setIsModalOpen(false);
+          setImportPlaylistUrl('');
+          setImportStatus('idle');
+          return;
+        } else {
+          setImportStatus('err');
+          setFormError(data.error || 'Failed to initialize background sync tracking.');
+          return;
+        }
+      } catch {
+        setImportStatus('err');
+        setFormError('Failed to establish connection with the automated sync engine.');
+        return;
+      }
     }
 
     if (!formTitle.trim()) {
@@ -438,7 +634,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
   const handleFetchPlaylist = async () => {
     if (!importPlaylistUrl.trim()) {
-      setImportError('Please enter a YouTube playlist link first.');
+      setImportError('Please enter a YouTube link (Channel, Playlist, or Video URL).');
       setImportStatus('err');
       return;
     }
@@ -447,202 +643,34 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
     setImportedPreview(null);
 
     try {
-      const response = await fetch('/api/youtube/playlist', {
+      const res = await fetch('/api/youtube/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlistUrl: importPlaylistUrl.trim() })
+        body: JSON.stringify({
+          playlistUrl: importPlaylistUrl.trim()
+        })
       });
-
-      const responseText = await response.text();
-      let resData: any;
-      try {
-        resData = JSON.parse(responseText);
-        if (response.ok && resData.success) {
-          setImportedPreview({
-            playlistTitle: resData.playlistTitle,
-            videos: resData.videos
-          });
-          setImportStatus('success');
-          return;
-        }
-      } catch (jsonErr) {
-        console.warn('Playlist API returned non-JSON. Transitioning immediately to smart client-side RSS crawler.', jsonErr);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setImportStatus('success');
+        setImportedPreview({
+          playlistTitle: data.playlistTitle || "YouTube Course Playlist",
+          videos: data.videos || []
+        });
+        return;
+      } else {
+        setImportStatus('err');
+        setImportError(data.error || 'Failed to fetch the YouTube Playlist. Please verify the URL.');
+        return;
       }
-
-      // Try Client-Side RSS Fallback to get exact playlist items
-      try {
-        const rssResult = await tryRssPlaylistImport(importPlaylistUrl.trim());
-        if (rssResult && rssResult.videos.length > 0) {
-          setImportedPreview(rssResult);
-          setImportStatus('success');
-          return;
-        }
-      } catch (crawlerErr) {
-        console.warn('Client-side RSS playlist crawler failed, activating rich curriculum generator fallback.', crawlerErr);
-      }
-
-      // Formulate a beautiful academic title based on terms in the user URL
-      let customCourseTitle = "Curated Tutorial Syllabus";
-      try {
-        const urlObj = new URL(importPlaylistUrl.trim());
-        const listId = urlObj.searchParams.get('list');
-        if (listId) {
-          customCourseTitle = `Course Playlist (${listId.substring(0, 10)})`;
-        }
-      } catch (e) {}
-
-      const fallbackVideos = [
-        {
-          videoId: "hQAHLaqiIyc",
-          title: "1. Introduction to Core Concepts & Curriculum Scope",
-          url: "https://www.youtube.com/watch?v=hQAHLaqiIyc",
-          description: "Learn foundational structures, prerequisites, and goals."
-        },
-        {
-          videoId: "w7ejDZ8SWv8",
-          title: "2. Setting up our Local & Cloud Workspaces",
-          url: "https://www.youtube.com/watch?v=w7ejDZ8SWv8",
-          description: "Install tools, run compiler paths, and assert keys."
-        },
-        {
-          videoId: "s2skans2GP4",
-          title: "3. Implementing Primary Styling & UI Blueprints",
-          url: "https://www.youtube.com/watch?v=s2skans2GP4",
-          description: "Dynamic responsive UI implementation with utility classes."
-        },
-        {
-          videoId: "SqcY0GlETPk",
-          title: "4. Managing High-Density State & API Synchronization",
-          url: "https://www.youtube.com/watch?v=SqcY0GlETPk",
-          description: "Binding variables, handling server payloads, and lazy loading."
-        },
-        {
-          videoId: "Ke90Tje7VS0",
-          title: "5. Connecting Databases & Shared Persistency Rules",
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0",
-          description: "Establishing secure storage backends and session caching."
-        },
-        {
-          videoId: "fM36Y3bUToU",
-          title: "6. Building Modular Express Server Endpoints",
-          url: "https://www.youtube.com/watch?v=fM36Y3bUToU",
-          description: "Set up route handlers, fetch proxying, and parameters extraction."
-        },
-        {
-          videoId: "pk7ESm-Zsc0",
-          title: "7. Advanced Client-Server Handshake Operations",
-          url: "https://www.youtube.com/watch?v=pk7ESm-Zsc0",
-          description: "Implement custom JSON payload headers, status traps, and CORS values."
-        },
-        {
-          videoId: "30LWjhZR6eg",
-          title: "8. Comprehensive Debugging, Error Traps & Optimization",
-          url: "https://www.youtube.com/watch?v=30LWjhZR6eg",
-          description: "Examine memory leaks, handle exceptions, and boost lighthouse ratings."
-        },
-        {
-          videoId: "pTbS9E8n4MA",
-          title: "9. Production Deployment Procedures & Best Practices",
-          url: "https://www.youtube.com/watch?v=pTbS9E8n4MA",
-          description: "Build artifact creation and automated cloud container configuration."
-        },
-        {
-          videoId: "bMknfKzHOf4",
-          title: "10. Advanced Landmark Architecture & Final Syllabus Review",
-          url: "https://www.youtube.com/watch?v=bMknfKzHOf4",
-          description: "Review system components, security posture, and educational goals."
-        }
-      ];
-
-      setImportedPreview({
-        playlistTitle: `${customCourseTitle} (Curated Client Fallback)`,
-        videos: fallbackVideos
-      });
-      setImportStatus('success');
+    } catch {
+      setImportStatus('err');
+      setImportError('Failed to establish connection with the YouTube service.');
       return;
-    } catch (err: any) {
-      console.warn('Network error during playlist sync, falling back safely to client generation:', err);
-      
-      // Try Client-Side RSS Fallback first in catch block as well
-      try {
-        const rssResult = await tryRssPlaylistImport(importPlaylistUrl.trim());
-        if (rssResult && rssResult.videos.length > 0) {
-          setImportedPreview(rssResult);
-          setImportStatus('success');
-          return;
-        }
-      } catch (crawlerErr) {}
-
-      const fallbackVideos = [
-        {
-          videoId: "hQAHLaqiIyc",
-          title: "1. Introduction to Core Concepts & Curriculum Scope",
-          url: "https://www.youtube.com/watch?v=hQAHLaqiIyc",
-          description: "Learn foundational structures, prerequisites, and goals."
-        },
-        {
-          videoId: "w7ejDZ8SWv8",
-          title: "2. Setting up our Local & Cloud Workspaces",
-          url: "https://www.youtube.com/watch?v=w7ejDZ8SWv8",
-          description: "Install tools, run compiler paths, and assert keys."
-        },
-        {
-          videoId: "s2skans2GP4",
-          title: "3. Implementing Primary Styling & UI Blueprints",
-          url: "https://www.youtube.com/watch?v=s2skans2GP4",
-          description: "Dynamic responsive UI implementation with utility classes."
-        },
-        {
-          videoId: "SqcY0GlETPk",
-          title: "4. Managing High-Density State & API Synchronization",
-          url: "https://www.youtube.com/watch?v=SqcY0GlETPk",
-          description: "Binding variables, handling server payloads, and lazy loading."
-        },
-        {
-          videoId: "Ke90Tje7VS0",
-          title: "5. Connecting Databases & Shared Persistency Rules",
-          url: "https://www.youtube.com/watch?v=Ke90Tje7VS0",
-          description: "Establishing secure storage backends and session caching."
-        },
-        {
-          videoId: "fM36Y3bUToU",
-          title: "6. Building Modular Express Server Endpoints",
-          url: "https://www.youtube.com/watch?v=fM36Y3bUToU",
-          description: "Set up route handlers, fetch proxying, and parameters extraction."
-        },
-        {
-          videoId: "pk7ESm-Zsc0",
-          title: "7. Advanced Client-Server Handshake Operations",
-          url: "https://www.youtube.com/watch?v=pk7ESm-Zsc0",
-          description: "Implement custom JSON payload headers, status traps, and CORS values."
-        },
-        {
-          videoId: "30LWjhZR6eg",
-          title: "8. Comprehensive Debugging, Error Traps & Optimization",
-          url: "https://www.youtube.com/watch?v=30LWjhZR6eg",
-          description: "Examine memory leaks, handle exceptions, and boost lighthouse ratings."
-        },
-        {
-          videoId: "pTbS9E8n4MA",
-          title: "9. Production Deployment Procedures & Best Practices",
-          url: "https://www.youtube.com/watch?v=pTbS9E8n4MA",
-          description: "Build artifact creation and automated cloud container configuration."
-        },
-        {
-          videoId: "bMknfKzHOf4",
-          title: "10. Advanced Landmark Architecture & Final Syllabus Review",
-          url: "https://www.youtube.com/watch?v=bMknfKzHOf4",
-          description: "Review system components, security posture, and educational goals."
-        }
-      ];
-
-      setImportedPreview({
-        playlistTitle: "Curated Playlist (Network Client Fallback)",
-        videos: fallbackVideos
-      });
-      setImportStatus('success');
     }
   };
+
+
 
   const handleReorder = (draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
@@ -674,19 +702,55 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
     return null;
   };
 
-  // Filter videos
+  // Filter & Sort videos
   const filteredVideos = videos.filter(vid => {
     const { sub, topic } = getSubtopicPath(vid.subtopicId);
-    const query = searchTerm.toLowerCase();
+    const query = searchTerm.toLowerCase().trim();
 
-    const matchesQuery = vid.title.toLowerCase().includes(query) ||
+    // Support query lookup across titles, custom descriptions, custom channel title tags, URLs, subtopics etc.
+    const matchesQuery = !query ||
+      vid.title.toLowerCase().includes(query) ||
       vid.url.toLowerCase().includes(query) ||
+      (vid.channelTitle?.toLowerCase().includes(query) ?? false) ||
+      (vid.description?.toLowerCase().includes(query) ?? false) ||
+      (vid.tags?.some(tag => tag.toLowerCase().includes(query)) ?? false) ||
       (sub?.name.toLowerCase().includes(query) ?? false) ||
       (topic?.name.toLowerCase().includes(query) ?? false);
 
     const matchesTopic = selectedTopicId === 'all' || (sub?.topicId === selectedTopicId);
 
-    return matchesQuery && matchesTopic;
+    // Duration boundaries filter
+    let matchesDuration = true;
+    if (selectedDuration !== 'all' && vid.durationSeconds) {
+      const sec = vid.durationSeconds;
+      if (selectedDuration === 'short') matchesDuration = sec < 300;
+      else if (selectedDuration === 'medium') matchesDuration = sec >= 300 && sec < 900;
+      else if (selectedDuration === 'long') matchesDuration = sec >= 900 && sec < 2700;
+      else if (selectedDuration === 'excessive') matchesDuration = sec >= 2700;
+    }
+
+    return matchesQuery && matchesTopic && matchesDuration;
+  }).sort((a, b) => {
+    if (selectedSort === 'imported-desc') {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    }
+    if (selectedSort === 'published-desc') {
+      const tA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const tB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return tB - tA;
+    }
+    if (selectedSort === 'published-asc') {
+      const tA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const tB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return tA - tB;
+    }
+    if (selectedSort === 'views-desc') {
+      return (b.views || 0) - (a.views || 0);
+    }
+    if (selectedSort === 'duration-desc') {
+      return (b.durationSeconds || 0) - (a.durationSeconds || 0);
+    }
+    return 0;
   });
 
   return (
@@ -816,33 +880,288 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
         )}
       </div>
 
+      {/* Dynamic YouTube Tracker & Background Progress monitor panel */}
+      {(youtubeSources.length > 0 || activeJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled').length > 0) && (
+        <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-855 p-6 rounded-[2rem] space-y-6 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 dark:border-slate-850 pb-4">
+            <div>
+              <h3 className="text-lg font-black text-slate-905 dark:text-white flex items-center gap-2">
+                <Radio className="w-5 h-5 text-red-500 animate-pulse shrink-0" />
+                <span>Enterprise YouTube Sync Dashboard</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                SaaS-grade monitoring of synchronized learning courses, channel watch lists, and real-time extraction engines.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-left">
+            {/* Column A: Tracked Sources */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                <ListMusic className="w-4 h-4 text-slate-400" />
+                <span>Active Channels / Playlists Synchronized ({youtubeSources.length})</span>
+              </h4>
+              
+              {youtubeSources.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-150 dark:border-slate-850 text-center text-xs font-medium text-slate-400 py-6">
+                  No automated sources tracked yet. Paste a link under the "Sync" tab of any subtopic!
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                  {youtubeSources.map(src => {
+                    const status = syncStatusMap[src.id] || 'idle';
+                    return (
+                      <div key={src.id} className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-850 flex flex-col sm:flex-row md:items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-800 transition-all">
+                        <div className="flex items-center gap-3 text-left min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-950 border border-slate-205 dark:border-slate-805 flex items-center justify-center shrink-0 overflow-hidden">
+                            {src.thumbnailUrl ? (
+                              <img src={src.thumbnailUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <Video className="w-5 h-5 text-red-505" />
+                            )}
+                          </div>
+                          <div className="space-y-0.5 truncate flex-1 min-w-0">
+                            <h5 className="text-xs font-extrabold text-slate-800 dark:text-white truncate flex items-center gap-1.5">
+                              {src.title}
+                            </h5>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-mono font-bold text-slate-405">
+                              <span className={`px-1.5 py-0.2 rounded-md uppercase ${
+                                src.type === 'channel' ? 'bg-red-50 text-red-650 dark:bg-red-500/10 dark:text-red-400' : 'bg-blue-50 text-blue-650 dark:bg-blue-500/10 dark:text-blue-400'
+                              }`}>
+                                {src.type}
+                              </span>
+                              <span>•</span>
+                              <span>{src.totalImported || 0} Imported</span>
+                              {src.lastSyncedAt && (
+                                <>
+                                  <span>•</span>
+                                  <span className="truncate">Synced {new Date(src.lastSyncedAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0 select-none">
+                          {/* Interval Dropdown */}
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <select
+                              value={src.syncInterval}
+                              onChange={(e) => handleUpdateSourceSyncInterval(src.id, e.target.value)}
+                              className="px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-205 dark:border-slate-805 text-[10px] font-mono font-black uppercase text-slate-605 dark:text-slate-350 rounded-lg focus:outline-none focus:border-red-550 transition-colors"
+                              title="Set auto-synchronization background frequency"
+                            >
+                              <option value="manual">Manual</option>
+                              <option value="hourly">Hourly</option>
+                              <option value="daily">Daily</option>
+                              <option value="weekly">Weekly</option>
+                            </select>
+                          </div>
+
+                          {/* Trigger Force Sync */}
+                          <button
+                            onClick={() => handleForceSyncNow(src.id)}
+                            disabled={status === 'syncing'}
+                            className="p-1 px-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-[10px] font-black rounded-lg transition-all flex items-center gap-1 border border-slate-200 dark:border-slate-700 disabled:opacity-45 shrink-0 cursor-pointer"
+                            title="Force Sync active delta changes right now"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${status === 'syncing' ? 'animate-spin text-red-500' : ''}`} />
+                            <span>{status === 'syncing' ? 'Syncing...' : 'Sync'}</span>
+                          </button>
+
+                          {/* Delete Menu Dropdown or Popovers options */}
+                          <div className="relative group/delete">
+                            <button className="p-1.5 hover:bg-red-50 hover:text-red-650 dark:hover:bg-red-950/30 text-slate-400 rounded-lg transition-colors border border-transparent cursor-pointer">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Keep or Wipe Dropdown option overlays absolute absolute position */}
+                            <div className="absolute right-0 bottom-full mb-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2.5 hidden group-hover/delete:flex flex-col gap-1.5 z-30 w-44 animate-in fade-in zoom-in-95 duration-100 text-left">
+                              <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-wider pb-1 italic border-b border-slate-100 dark:border-slate-800">Uninstall tracking?</span>
+                              <button
+                                onClick={() => handleDeleteSource(src.id, false)}
+                                className="text-left text-[10px] font-extrabold text-red-550 hover:bg-red-50 dark:hover:bg-red-950/20 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer w-full text-red-600 dark:text-red-400"
+                              >
+                                <XCircle className="w-3.5 h-3.5 shrink-0" />
+                                <span>Wipe source & videos</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSource(src.id, true)}
+                                className="text-left text-[10px] font-extrabold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer w-full"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>Remove source, keep vids</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Column B: Active/Historical Jobs Progress Cards */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono flex items-center gap-1.5 font-sans">
+                <History className="w-4 h-4 text-slate-400 font-sans" />
+                <span>Extraction Engine & Background Jobs ({activeJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled').length} active)</span>
+              </h4>
+
+              {activeJobs.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-150 dark:border-slate-850 text-center text-xs font-medium text-slate-400 py-6">
+                  No active background extractions or sync jobs are running.
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                  {activeJobs.map(job => {
+                    const pct = job.totalVideos > 0 ? Math.round((job.importedVideosCount / job.totalVideos) * 100) : 0;
+                    const isRunning = ['starting', 'importing', 'syncing'].includes(job.status);
+                    
+                    return (
+                      <div key={job.id} className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-850 flex flex-col gap-3 relative overflow-hidden">
+                        {/* Status top card lines */}
+                        <div className="flex items-center justify-between gap-1 text-left min-w-0">
+                          <div className="truncate flex-1 min-w-0">
+                            <span className="text-[8px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Job #{job.id.slice(0, 8)}</span>
+                            <span className="text-xs font-extrabold text-slate-805 dark:text-white block truncate">{job.title || job.sourceUrl}</span>
+                          </div>
+
+                          <span className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded-full select-none shrink-0 ${
+                            job.status === 'completed'
+                              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+                              : job.status === 'error'
+                                ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+                                : job.status === 'paused'
+                                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                                  : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 animate-pulse'
+                          }`}>
+                            {job.status}
+                          </span>
+                        </div>
+
+                        {/* Middle loader stats line */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            {/* Progress bar wrap container */}
+                            <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="bg-red-600 h-1.5 rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-[9px] font-mono font-bold text-slate-400 mt-1">
+                              <span>{pct}% ({job.importedVideosCount} / {job.totalVideos || '...' }) videos</span>
+                              {isRunning && job.etaSeconds && (
+                                <span>ETA: ~{job.etaSeconds}s</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Control actions for Job block */}
+                          {isRunning && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleToggleJobPause(job.id)}
+                                className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+                                title="Pause Sync Job"
+                              >
+                                {job.status === 'paused' ? (
+                                  <PlayCircle className="w-4 h-4 text-emerald-500" />
+                                ) : (
+                                  <PauseCircle className="w-4 h-4 text-amber-500" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleCancelJob(job.id)}
+                                className="p-1 text-slate-400 hover:text-red-550 rounded-lg transition-colors cursor-pointer"
+                                title="Cancel Job"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {job.errorMsg && (
+                          <p className="text-[9px] text-red-500 leading-tight italic font-mono text-left">
+                            ⚠️ {job.errorMsg}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Control Actions toolbar */}
-      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-855 shadow-3xs">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-[2rem] border border-slate-200 dark:border-slate-855 shadow-3xs">
         {/* Search */}
-        <div className="relative w-full sm:flex-1">
+        <div className="relative w-full lg:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search lectures, code walkthrough channels, subtopic categories..."
+            placeholder="Search titles, publisher channels, relative tags, short synopses..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-805 bg-slate-50/50 dark:bg-slate-950 rounded-xl text-sm text-slate-855 dark:text-slate-100 placeholder-slate-400 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-sans"
+            className="w-full pl-10 pr-4 py-2 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-805 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-hidden focus:border-red-500 transition-all font-sans font-semibold"
           />
         </div>
 
-        {/* Filter select */}
-        <div className="w-full sm:w-auto flex items-center gap-2">
-          <Layers className="w-4 h-4 text-slate-405 shrink-0" />
-          <select
-            value={selectedTopicId}
-            onChange={(e) => setSelectedTopicId(e.target.value)}
-            className="w-full sm:w-auto px-4 py-2 border border-slate-200 dark:border-slate-805 bg-slate-55 dark:bg-slate-950 rounded-xl text-xs outline-hidden text-slate-705 dark:text-slate-300 font-sans focus:border-blue-500"
-          >
-            <option value="all">All Topics (Default)</option>
-            {topics.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
+        {/* Filters Grouping */}
+        <div className="w-full lg:w-auto flex flex-wrap sm:flex-nowrap items-center gap-2 select-none">
+          {/* Topic */}
+          <div className="w-full sm:w-auto flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl">
+            <Layers className="w-3.5 h-3.5 text-slate-405 shrink-0" />
+            <select
+              value={selectedTopicId}
+              onChange={(e) => setSelectedTopicId(e.target.value)}
+              className="bg-transparent text-xs font-bold font-sans outline-hidden text-slate-700 dark:text-slate-300 cursor-pointer min-w-[125px]"
+            >
+              <option value="all">All Topics (Default)</option>
+              {topics.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Duration */}
+          <div className="w-full sm:w-auto flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl">
+            <Clock className="w-3.5 h-3.5 text-slate-405 shrink-0" />
+            <select
+              value={selectedDuration}
+              onChange={(e) => setSelectedDuration(e.target.value)}
+              className="bg-transparent text-xs font-bold font-sans outline-hidden text-slate-700 dark:text-slate-300 cursor-pointer min-w-[110px]"
+            >
+              <option value="all">All Durations</option>
+              <option value="short">Short (&lt; 5 mins)</option>
+              <option value="medium">Medium (5-15 mins)</option>
+              <option value="long">Long (15-45 mins)</option>
+              <option value="excessive">In-Depth (45m+)</option>
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div className="w-full sm:w-auto flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-445 shrink-0" />
+            <select
+              value={selectedSort}
+              onChange={(e) => setSelectedSort(e.target.value)}
+              className="bg-transparent text-xs font-bold font-sans outline-hidden text-slate-700 dark:text-slate-300 cursor-pointer min-w-[140px]"
+            >
+              <option value="imported-desc">Imported: Newest</option>
+              <option value="published-desc">Published: Newest</option>
+              <option value="published-asc">Published: Oldest</option>
+              <option value="views-desc">Views: Highest</option>
+              <option value="duration-desc">Duration: Longest</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1032,9 +1351,15 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   )}
                 </button>
 
-                <span className="absolute bottom-3.5 right-3.5 bg-black/75 backdrop-blur-xs text-[9px] font-mono tracking-wider font-bold text-white px-2 py-0.5 rounded-lg uppercase">
-                  {isLocal ? 'Local Storage' : (vid.platform === 'youtube' ? 'YouTube' : 'Web Video')}
-                </span>
+                {vid.durationSeconds ? (
+                  <span className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md text-[10px] font-mono font-black text-white px-2 py-0.5 rounded-md shadow-xs select-none">
+                    {formatDuration(vid.durationSeconds)}
+                  </span>
+                ) : (
+                  <span className="absolute bottom-3.5 right-3.5 bg-black/75 backdrop-blur-xs text-[9px] font-mono tracking-wider font-bold text-white px-2 py-0.5 rounded-lg uppercase">
+                    {isLocal ? 'Local Storage' : (vid.platform === 'youtube' ? 'YouTube' : 'Web Video')}
+                  </span>
+                )}
               </div>
 
               {/* Text Info Section */}
@@ -1044,7 +1369,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     {sub && topic ? (
                       <button
                         onClick={() => onOpenSubtopic(topic.id, sub.id)}
-                        className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 text-[10px] font-bold font-mono tracking-wide transition-colors truncate"
+                        className="inline-flex items-center gap-1.5 text-slate-505 hover:text-red-600 dark:hover:text-red-400 text-[10px] font-bold font-mono tracking-wide transition-colors truncate"
                       >
                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: topic.color }} />
                         <span>{topic.name}</span>
@@ -1055,7 +1380,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                       <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider">Curated Resource</span>
                     )}
 
-                    <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                    <span className="text-[9px] text-slate-400 font-mono shrink-0 font-semibold">
                       {new Date(vid.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
                     </span>
                   </div>
@@ -1063,6 +1388,40 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   <h4 className="text-sm font-extrabold text-slate-900 dark:text-white line-clamp-2 leading-snug">
                     {vid.title}
                   </h4>
+
+                  {/* Channel Publisher Badge */}
+                  {vid.channelTitle && (
+                    <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-slate-500 dark:text-slate-400 pt-0.5 select-none">
+                      <Tv className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{vid.channelTitle}</span>
+                    </div>
+                  )}
+
+                  {/* Dynamic View count and publication offset indicators */}
+                  {(vid.views || vid.publishedAt) && (
+                    <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-405 dark:text-slate-500 font-mono pt-0.5 select-none">
+                      {vid.views && (
+                        <span className="flex items-center gap-1 shrink-0">
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{formatViews(vid.views)}</span>
+                        </span>
+                      )}
+                      {vid.views && vid.publishedAt && <span>•</span>}
+                      {vid.publishedAt && (
+                        <span className="flex items-center gap-1 shrink-0">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>{new Date(vid.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Extra Rich Video Description synopsis */}
+                  {vid.description && (
+                    <p className="text-[11px] font-medium text-slate-450 dark:text-slate-550 line-clamp-2 leading-relaxed pt-1.5 italic text-left">
+                      {vid.description}
+                    </p>
+                  )}
                 </div>
 
                 {/* Tactile Watch-Complete switch slider */}
@@ -1317,12 +1676,12 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                     <div className="space-y-3 pt-1">
                       <div className="space-y-1">
                         <h4 className="text-xs font-black text-slate-800 dark:text-white">
-                          Copy & Paste YouTube Playlist Link *
+                          Copy & Paste YouTube Link (Channels, Playlists, Videos)*
                         </h4>
                         <div className="flex gap-1.5">
                           <input
                             type="url"
-                            placeholder="e.g. https://www.youtube.com/playlist?list=PL_XxuZ..."
+                            placeholder="e.g. youtube.com/playlist?list=... or youtube.com/@channel"
                             value={importPlaylistUrl}
                             onChange={(e) => setImportPlaylistUrl(e.target.value)}
                             className="flex-grow px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950 text-xs font-semibold outline-none focus:border-red-550 text-slate-905 dark:text-white"
@@ -1331,21 +1690,130 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                             type="button"
                             onClick={handleFetchPlaylist}
                             disabled={importStatus === 'loading'}
-                            className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 text-white text-xs font-black rounded-xl cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
+                            className="px-4 py-2 bg-red-650 hover:bg-red-505 disabled:bg-slate-300 disabled:dark:bg-slate-850 text-white text-xs font-black rounded-xl cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
                           >
                             {importStatus === 'loading' ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>Loading...</span>
+                                <span>Fetching...</span>
                               </>
                             ) : (
-                              <span>Sync List</span>
+                              <span>Fetch Videos</span>
                             )}
                           </button>
                         </div>
+
+                        {/* Interactive Playlist Range controls */}
+                        <div className="bg-slate-50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/60 mt-3 space-y-3">
+                          <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Import Video Range Scope
+                          </h5>
+                          
+                          <div className="grid grid-cols-2 gap-2 mt-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeMode('all');
+                              }}
+                              className={`py-2 px-3 text-[11px] font-black rounded-xl border text-center transition-all cursor-pointer ${
+                                rangeMode === 'all'
+                                  ? 'bg-red-500 text-white border-red-500 shadow-3xs'
+                                  : 'bg-white hover:bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-350 hover:text-slate-800 dark:hover:text-white'
+                              }`}
+                            >
+                              Fetch All Videos
+                            </button>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeMode('custom');
+                              }}
+                              className={`py-2 px-3 text-[11px] font-black rounded-xl border text-center transition-all cursor-pointer ${
+                                rangeMode === 'custom'
+                                  ? 'bg-red-500 text-white border-red-500 shadow-3xs'
+                                  : 'bg-white hover:bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-350 hover:text-slate-800 dark:hover:text-white'
+                              }`}
+                            >
+                              Fetch Custom Ranges
+                            </button>
+                          </div>
+
+                          {rangeMode === 'custom' && (
+                            <div className="space-y-2 mt-2 animate-in slide-in-from-top-2 duration-100">
+                              {/* Range Preset Options inside Custom */}
+                              <div className="flex flex-wrap gap-1.5 pb-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRangeStart(10);
+                                    setRangeEnd(20);
+                                  }}
+                                  className={`px-2 py-1 text-[10px] font-bold rounded-lg border cursor-pointer transition-all ${
+                                    rangeStart === 10 && rangeEnd === 20
+                                      ? 'bg-red-100 dark:bg-red-950/60 border-red-300 dark:border-red-900 text-red-700 dark:text-red-300'
+                                      : 'bg-white hover:bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
+                                  Preset: 10 videos (no. 10 to 20)
+                                </button>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRangeStart(25);
+                                    setRangeEnd(45);
+                                  }}
+                                  className={`px-2 py-1 text-[10px] font-bold rounded-lg border cursor-pointer transition-all ${
+                                    rangeStart === 25 && rangeEnd === 45
+                                      ? 'bg-red-100 dark:bg-red-950/60 border-red-300 dark:border-red-900 text-red-700 dark:text-red-300'
+                                      : 'bg-white hover:bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
+                                  Preset: 20 videos (no. 25 to 45)
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800">
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-black text-slate-405">START AT (VIDEO #)</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={rangeStart}
+                                    onChange={(e) => setRangeStart(Math.max(1, parseInt(e.target.value) || 1))}
+                                    className="w-full px-2.5 py-1.5 text-xs font-black rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-955 text-slate-800 dark:text-white outline-none focus:border-red-500"
+                                  />
+                                </div>
+                                
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-black text-slate-405">END AT (VIDEO #)</label>
+                                  <input
+                                    type="number"
+                                    min={rangeStart}
+                                    value={rangeEnd}
+                                    onChange={(e) => setRangeEnd(Math.max(rangeStart, parseInt(e.target.value) || rangeStart))}
+                                    className="w-full px-2.5 py-1.5 text-xs font-black rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-955 text-slate-800 dark:text-white outline-none focus:border-red-500"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <p className="text-[9px] text-slate-400 italic">
+                                Scrapes custom section starting at playlist item index <strong>#{rangeStart}</strong> and stopping strictly after index <strong>#{rangeEnd}</strong> (Total <strong>{rangeEnd - rangeStart + 1}</strong> videos max, saving YouTube Quota).
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
                         {importError && (
                           <p className="text-[10px] text-red-550 font-bold leading-tight mt-1">⚠️ {importError}</p>
                         )}
+                        {importStatus === 'success' && (
+                          <p className="text-[10px] text-emerald-600 font-bold leading-tight mt-1">✓ Tracking registered! Extraction engine initialized in the background.</p>
+                        )}
+                        <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-1">
+                          Our enterprise extraction engine scrapes delta uploads, deduplicates existing items, paginates historical records, and bypasses limitation limits automatically in the background.
+                        </p>
                       </div>
 
                       {/* Import Preview results list */}
