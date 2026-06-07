@@ -3,7 +3,7 @@ import {
   Plus, Sun, Moon, Sparkles, LogOut, Check, CloudLightning, RefreshCw, Menu, X,
   GraduationCap, Code, Database, Cloud, Cpu, Layers, Atom, Terminal, Globe,
   Network, BrainCircuit, Compass, Award, Coffee, Lock, FileText, Server, Landmark,
-  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop
+  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop, Flame
 } from 'lucide-react';
 import { Topic, CustomUser } from '../types';
 
@@ -17,6 +17,10 @@ interface SidebarProps {
   isDarkMode: boolean;
   onToggleTheme: () => void;
   syncStatus: 'saving' | 'saved' | 'offline' | 'syncing' | 'reconnecting';
+  streak?: {
+    count: number;
+    lastActiveDate: string;
+  };
 }
 
 const AVAILABLE_ICONS = [
@@ -59,8 +63,20 @@ export function Sidebar({
   onLogout,
   isDarkMode,
   onToggleTheme,
-  syncStatus
+  syncStatus,
+  streak
 }: SidebarProps) {
+  const todayStr = (() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })();
+
+  const streakCount = streak?.count || 0;
+  const completedToday = streak?.lastActiveDate === todayStr;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -111,6 +127,16 @@ export function Sidebar({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {streakCount > 0 && (
+            <div 
+              onClick={() => { onSelectView('dashboard'); }}
+              className="flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-450 text-[11px] font-mono font-bold px-2 py-1 rounded-lg cursor-pointer"
+              title="Your Study Streak"
+            >
+              <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500 animate-pulse" />
+              <span>{streakCount}d</span>
+            </div>
+          )}
           <button 
             onClick={onToggleTheme}
             className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -196,6 +222,37 @@ export function Sidebar({
           <span className="text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold">REALTIME</span>
         </div>
 
+        {/* Streak Visual Card */}
+        <div className="px-6 py-3 bg-gradient-to-r from-amber-500/[0.03] to-orange-500/[0.03] dark:from-amber-500/[0.02] dark:to-orange-500/[0.01] border-b border-slate-205/60 dark:border-slate-800/40 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <div className={`p-1.5 rounded-lg ${completedToday ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-850 text-slate-400 dark:text-slate-500'}`}>
+                  <Flame className={`w-5 h-5 ${completedToday ? 'fill-amber-500 animate-pulse text-amber-500' : ''}`} />
+                </div>
+                {completedToday && (
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-440 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <span>{streakCount} Day Study Streak</span>
+                </p>
+                <span className="text-[10px] text-slate-400 block mt-0.5 font-sans leading-tight">
+                  {completedToday ? '✨ Today complete! Great work!' : '⏳ Complete 1 goal to keep the fire!'}
+                </span>
+              </div>
+            </div>
+            
+            <div className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold tracking-tight shrink-0 ${completedToday ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-850 text-slate-400'}`}>
+              {completedToday ? 'ON FIRE' : 'RESTART'}
+            </div>
+          </div>
+        </div>
+
         {/* Navigation topics */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-7">
           <div className="space-y-1.5">
@@ -213,6 +270,22 @@ export function Sidebar({
             >
               <Compass className="w-4.5 h-4.5" />
               <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onSelectView('topicshelf');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
+                ${activeView === 'topicshelf'
+                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
+                }
+              `}
+            >
+              <Layers className="w-4.5 h-4.5" />
+              <span>Topicshelf</span>
             </button>
 
             <button
@@ -301,9 +374,21 @@ export function Sidebar({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between px-3">
-              <span className="text-[11px] font-bold font-mono tracking-wider text-slate-400 dark:text-slate-500 uppercase">
+              <button
+                onClick={() => {
+                  onSelectView('topicshelf');
+                  setMobileMenuOpen(false);
+                }}
+                className={`text-[11px] font-bold font-mono tracking-wider uppercase transition-all duration-150 text-left hover:text-blue-500 cursor-pointer
+                  ${activeView === 'topicshelf'
+                    ? 'text-blue-600 dark:text-blue-400 font-extrabold scale-102'
+                    : 'text-slate-400 dark:text-slate-500'
+                  }
+                `}
+                title="Open interactive Global Topicshelf"
+              >
                 Topicshelf
-              </span>
+              </button>
               <button 
                 onClick={() => setModalOpen(true)}
                 className="p-1 rounded hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"

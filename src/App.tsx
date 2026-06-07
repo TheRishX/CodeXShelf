@@ -14,6 +14,7 @@ import { AllQuizzesView } from './components/AllQuizzesView';
 import { AllPdfsView } from './components/AllPdfsView';
 import { KnowledgeVaultView } from './components/KnowledgeVaultView';
 import { AllAssignmentsView } from './components/AllAssignmentsView';
+import { AllTopicshelfView } from './components/AllTopicshelfView';
 import { Topic, Subtopic, DatabaseState, CustomUser } from './types';
 import { initialData } from './initialData';
 import { auth, db } from './firebase';
@@ -24,13 +25,49 @@ const LOCAL_STORAGE_DB_KEY = 'codexshelf_database_state_v1';
 const LOCAL_STORAGE_USER_KEY = 'codexshelf_active_user_v1';
 const LOCAL_STORAGE_THEME_KEY = 'codexshelf_theme_preference_v1';
 
+import { StudyTodoView } from './components/StudyTodoView';
+
 import { 
-  Laptop, BookOpen
+  Laptop, BookOpen, CheckSquare, ClipboardList, Flame, Sparkles, Award, X
 } from 'lucide-react';
+
+const getLocalDateString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDaysDifference = (dateStr1: string, dateStr2: string) => {
+  if (!dateStr1 || !dateStr2) return -1;
+  const d1 = new Date(dateStr1 + 'T12:00:00');
+  const d2 = new Date(dateStr2 + 'T12:00:05');
+  const diffTime = d2.getTime() - d1.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const detectNewActivity = (prev: DatabaseState, next: DatabaseState): boolean => {
+  const getCompletedCount = (state: DatabaseState) => {
+    const completedTodos = (state.todos || []).filter(t => t.status === 'completed').length;
+    const completedPdfs = (state.pdfs || []).filter(p => p.isCompleted || p.status === 'completed').length;
+    const readPdfs = (state.pdfs || []).filter(p => p.isReading || p.status === 'reading').length;
+    const completedNotes = (state.notes || []).filter(n => n.isCompleted || n.status === 'completed').length;
+    const readNotes = (state.notes || []).filter(n => n.isReading || n.status === 'reading').length;
+    const completedVideos = (state.videos || []).filter(v => v.isCompleted).length;
+    const completedAssignments = (state.assignments || []).filter(a => a.status === 'Completed' || a.status === 'Perfected').length;
+    const completedTrackers = (state.trackers || []).filter(t => t.completed).length;
+    
+    return completedTodos + completedPdfs + readPdfs + completedNotes + readNotes + completedVideos + completedAssignments + completedTrackers;
+  };
+
+  return getCompletedCount(next) > getCompletedCount(prev);
+};
 
 export default function App() {
   // Theme state representation
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+  const [streakCelebration, setStreakCelebration] = useState<{ show: boolean; newCount: number } | null>(null);
 
   // Authenticated student state
   const [currentUser, setCurrentUser] = useState<CustomUser>({
@@ -203,7 +240,54 @@ export default function App() {
 
   // Root state updater hook - Updates the UI instantly (Optimistic UI) and debounces the server save background task
   const handleUpdateDatabase = (updates: Partial<DatabaseState>) => {
-    const nextState = { ...latestStateRef.current, ...updates };
+    const prev = latestStateRef.current;
+    const nextState = { ...prev, ...updates };
+
+    // Daily Study Streak increment/maintenance
+    let updatedStreakState = nextState.streak || { count: 0, lastActiveDate: '' };
+    const todayStr = getLocalDateString();
+    const daysSinceLastActive = getDaysDifference(updatedStreakState.lastActiveDate, todayStr);
+
+    let currentStreakCount = updatedStreakState.count;
+    if (daysSinceLastActive > 1) {
+      currentStreakCount = 0; // decayed
+    }
+
+    const wasActivityDetected = detectNewActivity(prev, nextState);
+    if (wasActivityDetected) {
+      if (daysSinceLastActive === 0) {
+        // Already active today! Make sure count is at least 1 if they completed a task
+        updatedStreakState = {
+          count: Math.max(1, currentStreakCount),
+          lastActiveDate: todayStr
+        };
+        nextState.streak = updatedStreakState;
+      } else {
+        // Yesterday (1) or broken/new (>1 or -1)
+        const newCount = daysSinceLastActive === 1 ? currentStreakCount + 1 : 1;
+        updatedStreakState = {
+          count: newCount,
+          lastActiveDate: todayStr
+        };
+        nextState.streak = updatedStreakState;
+        
+        // Trigger visual announcement
+        setStreakCelebration({
+          show: true,
+          newCount: newCount
+        });
+      }
+    } else {
+      // If no new activity, propagate decayed count if it's broken
+      if (daysSinceLastActive > 1 && updatedStreakState.count !== 0) {
+        updatedStreakState = {
+          ...updatedStreakState,
+          count: 0
+        };
+        nextState.streak = updatedStreakState;
+      }
+    }
+
     setDbState(nextState);
     latestStateRef.current = nextState;
     
@@ -501,11 +585,34 @@ export default function App() {
       );
     }
 
+    if (activeView === 'todo') {
+      return (
+        <StudyTodoView
+          dbState={dbState}
+          onUpdateDb={handleUpdateDatabase}
+          onOpenSubtopic={handleOpenSubtopic}
+          onBackToDashboard={() => setActiveView('dashboard')}
+        />
+      );
+    }
+
     if (activeView === 'assignments') {
       return (
         <AllAssignmentsView
           dbState={dbState}
           onUpdateDb={handleUpdateDatabase}
+        />
+      );
+    }
+
+    if (activeView === 'topicshelf') {
+      return (
+        <AllTopicshelfView
+          dbState={dbState}
+          onSelectView={setActiveView}
+          onOpenSubtopic={handleOpenSubtopic}
+          onAddTopic={handleAddTopic}
+          onDeleteTopic={handleDeleteTopic}
         />
       );
     }
@@ -579,12 +686,39 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleTheme={handleToggleTheme}
         syncStatus={syncStatus}
+        streak={dbState.streak}
       />
 
       {/* 2. Main study content canvas scroll board */}
       <main className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-8 md:py-12 relative">
         {/* Floating Top Right Knowledge Vault Trigger */}
         <div className="absolute top-4 right-4 md:top-6 md:right-8 z-30 flex items-center gap-3">
+          {/* Daily Streak Indicator */}
+          {dbState.streak && dbState.streak.count > 0 && (
+            <div 
+              onClick={() => setActiveView('dashboard')}
+              className="px-3.5 py-2.5 rounded-xl text-xs font-black font-mono tracking-wider uppercase border bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border-amber-500/20 text-amber-600 dark:text-amber-450 flex items-center gap-2 cursor-pointer shadow-3xs"
+              title="Your Daily Study Streak!"
+            >
+              <Flame className="w-4 h-4 shrink-0 text-amber-550 fill-amber-500 animate-pulse" />
+              <span>{dbState.streak.count} DAY KEY</span>
+            </div>
+          )}
+
+          <button
+            onClick={() => setActiveView(activeView === 'todo' ? 'dashboard' : 'todo')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-2 border shadow-xs select-none cursor-pointer ${
+              activeView === 'todo'
+                ? 'bg-amber-500 hover:bg-amber-400 border-transparent text-white'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
+            }`}
+            title={activeView === 'todo' ? "Back to Dashboard" : "Open Psychological To-Do"}
+            id="todo-list-trigger"
+          >
+            <ClipboardList className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'todo' ? 'text-white' : 'text-amber-500 dark:text-amber-450'}`} />
+            <span>To-Do</span>
+          </button>
+
           <button
             onClick={() => setActiveView(activeView === 'vault' ? 'dashboard' : 'vault')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-2 border shadow-xs select-none cursor-pointer ${
@@ -604,6 +738,51 @@ export default function App() {
           {renderWorkspace()}
         </div>
       </main>
+
+      {/* 3. Daily Streak Milestone Celebrator */}
+      {streakCelebration && streakCelebration.show && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center p-4">
+          <div 
+            onClick={() => setStreakCelebration(null)}
+            className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs transition-opacity duration-300" 
+          />
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-amber-500/30 p-6 md:p-8 max-w-sm w-full text-center space-y-6 shadow-2xl animate-in zoom-in-95 duration-200 text-left">
+            <button
+              onClick={() => setStreakCelebration(null)}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-450 flex items-center justify-center mx-auto relative">
+              <Flame className="w-10 h-10 fill-amber-500 text-amber-500 animate-bounce" />
+              <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+              </span>
+            </div>
+
+            <div className="space-y-2 text-center">
+              <span className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest block">
+                🧠 HABIT STRENGTHENED!
+              </span>
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
+                {streakCelebration.newCount} Day Streak!
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans mt-2">
+                Cognitive momentum built! By completing a study target today, you have defended your memory matrix against the natural decay curve. Keep the fire burning!
+              </p>
+            </div>
+
+            <button
+              onClick={() => setStreakCelebration(null)}
+              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer select-none"
+            >
+              CRUSH NEXT CHALLENGE ➔
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

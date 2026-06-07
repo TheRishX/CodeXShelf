@@ -172,11 +172,47 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
     setTimeout(() => setCopiedCodeId(null), 1500);
   };
 
+  const markNoteAsReading = (noteId: string) => {
+    const updated = notes.map(n => {
+      if (n.id === noteId) {
+        return {
+          ...n,
+          isReading: true,
+          lastOpenedAt: new Date().toISOString(),
+          status: (n.status === 'completed' ? 'completed' : 'reading') as 'unseen' | 'reading' | 'completed' | 'revision'
+        };
+      }
+      return { ...n, isReading: false };
+    });
+    onUpdateDb({ notes: updated });
+  };
+
+  const updateNoteStatus = (noteId: string, status: 'unseen' | 'reading' | 'completed' | 'revision') => {
+    const updated = notes.map(n => {
+      if (n.id === noteId) {
+        return {
+          ...n,
+          status,
+          isCompleted: status === 'completed',
+          needsRevision: status === 'revision',
+          isReading: status === 'completed' ? false : n.isReading
+        };
+      }
+      return n;
+    });
+    onUpdateDb({ notes: updated });
+  };
+
   const toggleExpand = (noteId: string) => {
+    const nextState = !expandedNotes[noteId];
     setExpandedNotes(prev => ({
       ...prev,
-      [noteId]: !prev[noteId]
+      [noteId]: nextState
     }));
+
+    if (nextState) {
+      markNoteAsReading(noteId);
+    }
   };
 
   // Filter notes
@@ -322,18 +358,51 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
         {filteredNotes.map(note => {
           const { sub, topic } = getSubtopicPath(note.subtopicId);
           const isExpanded = expandedNotes[note.id] ?? false; // closed by default
+          const isReading = !!note.isReading;
+          const status = note.status || 'unseen';
+
+          // Distinct card styles depending on study progress
+          let cardStyles = "border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900";
+          let statusBadge = null;
+          let encouragementMsg = "";
+
+          if (isReading) {
+            cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.02] dark:bg-amber-955/[0.01] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
+          } else if (status === 'completed' || note.isCompleted) {
+            cardStyles = "border-emerald-250 dark:border-emerald-900/60 bg-emerald-500/[0.003] dark:bg-emerald-950/[0.003]";
+          } else if (status === 'revision' || note.needsRevision) {
+            cardStyles = "border-indigo-250 dark:border-indigo-900/60 bg-indigo-500/[0.003] dark:bg-indigo-950/[0.003]";
+          }
+
+          switch (status) {
+            case 'completed':
+              statusBadge = <span className="text-[9px] font-extrabold text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/20 px-1.5 py-0.5 rounded uppercase">🎉 MASTERED</span>;
+              encouragementMsg = "Excellent! You have achieved optimal retrieval strength for these concepts.";
+              break;
+            case 'revision':
+              statusBadge = <span className="text-[9px] font-extrabold text-indigo-600 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-1.5 py-0.5 rounded uppercase">🔄 SPACING ACTIVE</span>;
+              encouragementMsg = "Spacing pipeline active. Excellent day to practice active recall on this note.";
+              break;
+            case 'reading':
+              statusBadge = <span className="text-[9px] font-extrabold text-amber-600 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/20 px-1.5 py-0.5 rounded uppercase">📖 STUDYING NOW</span>;
+              encouragementMsg = "Active study session. Double click any code to test compile.";
+              break;
+            default:
+              statusBadge = <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-1.5 py-0.5 rounded uppercase">⏳ UNREAD</span>;
+              encouragementMsg = "Unread summary block. Open study notes and write core outline notes.";
+          }
 
           return (
             <div 
               key={note.id}
-              className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-850 overflow-hidden shadow-3xs"
+              className={`rounded-3xl border overflow-hidden transition-all shadow-3xs ${cardStyles}`}
             >
               {/* Accordion Header */}
               <div 
                 onClick={() => toggleExpand(note.id)}
-                className="p-5 flex items-center justify-between gap-4 cursor-pointer select-none bg-slate-50/40 dark:bg-slate-805/10 hover:bg-slate-50 dark:hover:bg-slate-805/30 transition-colors border-b border-slate-100 dark:border-slate-850"
+                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none bg-slate-50/40 dark:bg-slate-805/10 hover:bg-slate-50 dark:hover:bg-slate-805/30 transition-colors border-b border-slate-100 dark:border-slate-850"
               >
-                <div className="flex-1 space-y-1 truncate text-left">
+                <div className="flex-1 space-y-1.5 truncate text-left">
                   <div className="flex flex-wrap items-center gap-2">
                     {sub && topic ? (
                       <button
@@ -341,7 +410,7 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
                           e.stopPropagation();
                           onOpenSubtopic(topic.id, sub.id);
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/25 hover:bg-blue-100 text-blue-600 dark:text-blue-400 text-[10px] font-bold font-mono tracking-wide border border-blue-100/20"
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/25 hover:bg-blue-100 text-blue-600 dark:text-blue-400 text-[10px] font-bold font-mono tracking-wide border border-blue-100/20"
                       >
                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: topic.color }} />
                         <span>{topic.name}</span>
@@ -353,7 +422,16 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
                       <span className="text-[9px] text-slate-400 font-mono tracking-wide bg-slate-100 px-2 rounded">Notes Card</span>
                     )}
 
-                    <span className="text-[9px] text-slate-450 font-mono shrink-0">
+                    <div className="flex items-center gap-1">
+                      {statusBadge}
+                      {isReading && (
+                        <span className="text-[8px] font-black tracking-wider text-amber-655 bg-amber-500/15 px-1 py-0.5 rounded animate-pulse">
+                          🔖 ACTIVE FOCUS
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="text-[9px] text-slate-450 font-mono shrink-0 ml-auto md:ml-0">
                       Updated: {new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
                     </span>
                   </div>
@@ -363,13 +441,69 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
                   </h4>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-3 self-end md:self-center">
+                  {/* Inline Status Bar switcher inside notes title section */}
+                  <div 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="inline-flex bg-slate-100/80 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => updateNoteStatus(note.id, 'unseen')}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                        status === 'unseen'
+                          ? 'bg-white dark:bg-slate-805 text-slate-800 dark:text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-slate-650'
+                      }`}
+                      title="Mark note as unread"
+                    >
+                      Unread
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateNoteStatus(note.id, 'reading')}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                        status === 'reading'
+                          ? 'bg-amber-500 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-amber-550'
+                      }`}
+                      title="Mark note as started studying"
+                    >
+                      Study
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateNoteStatus(note.id, 'completed')}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                        status === 'completed'
+                          ? 'bg-emerald-600 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-emerald-555'
+                      }`}
+                      title="Mark note as mastered/complete"
+                    >
+                      Mastered
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateNoteStatus(note.id, 'revision')}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                        status === 'revision'
+                          ? 'bg-indigo-600 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-indigo-505'
+                      }`}
+                      title="Mark note as needs future spacing reviews"
+                    >
+                      Revise
+                    </button>
+                  </div>
+
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteItem(note.id);
                     }}
-                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     title="Remove Note Card"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -383,7 +517,14 @@ export function AllNotesView({ dbState, onOpenSubtopic, onUpdateDb }: AllNotesVi
 
               {/* Accordion Body details */}
               {isExpanded && (
-                <div className={`p-6 text-left border-t border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-900 overflow-visible text-slate-800 dark:text-slate-200 ${getTextSizeClass()}`}>
+                <div className={`p-6 text-left border-t border-slate-100 dark:border-slate-855 bg-white dark:bg-slate-900 overflow-visible text-slate-800 dark:text-slate-200 ${getTextSizeClass()}`}>
+                  
+                  {/* Encouraging psychological tip line at head of body */}
+                  <div className="mb-4 pb-2 border-b border-dashed border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-450 dark:text-slate-500">
+                    <span className="italic">💡 {encouragementMsg}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wide">STUDY OUTLINES LOG</span>
+                  </div>
+
                   {copiedCodeId && (
                     <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white text-xs font-mono font-bold px-3 py-1.5 rounded-xl shadow-lg animate-fade-in flex items-center gap-1.5">
                       <Check className="w-4 h-4" />

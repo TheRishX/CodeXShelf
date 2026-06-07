@@ -265,10 +265,18 @@ export function SubtopicView({
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
   const toggleNoteExpansion = (noteId: string) => {
-    setExpandedNotes(prev => ({
-      ...prev,
-      [noteId]: !prev[noteId]
-    }));
+    setExpandedNotes(prev => {
+      const nextVal = !prev[noteId];
+      if (nextVal) {
+        setTimeout(() => {
+          markNoteAsReading(noteId);
+        }, 10);
+      }
+      return {
+        ...prev,
+        [noteId]: nextVal
+      };
+    });
   };
 
   // General Edit Item states
@@ -445,6 +453,23 @@ export function SubtopicView({
   const listInterviews = dbState.interviews.filter(x => x.subtopicId === subtopicId);
   const listQuizzes = dbState.quizzes.filter(x => x.subtopicId === subtopicId);
   const listTrackers = (dbState.trackers || []).filter(x => x.subtopicId === subtopicId);
+  const totalTrackedItems = listPdfs.length + listNotes.length;
+  const compPdfsCount = listPdfs.filter(p => p.status === 'completed' || p.isCompleted).length;
+  const compNotesCount = listNotes.filter(n => n.status === 'completed' || n.isCompleted).length;
+  const totalCompletedCount = compPdfsCount + compNotesCount;
+
+  const activePdfsCount = listPdfs.filter(p => p.status === 'reading' || p.isReading).length;
+  const activeNotesCount = listNotes.filter(n => n.status === 'reading' || n.isReading).length;
+  const totalActiveCount = activePdfsCount + activeNotesCount;
+
+  const revPdfsCount = listPdfs.filter(p => p.status === 'revision' || p.needsRevision).length;
+  const revNotesCount = listNotes.filter(n => n.status === 'revision' || n.needsRevision).length;
+  const totalRevisionCount = revPdfsCount + revNotesCount;
+
+  const lastReadItem = [...listPdfs.map(p => ({...p, type: 'pdf' as const})), ...listNotes.map(n => ({...n, type: 'note' as const}))]
+    .filter(x => x.lastOpenedAt)
+    .sort((a, b) => new Date(b.lastOpenedAt!).getTime() - new Date(a.lastOpenedAt!).getTime())[0];
+
   const filteredTrackers = listTrackers.filter(t => {
     const confidence = t.confidence || 0;
     if (activeBoxFilter === 'unseen') return confidence <= 30;
@@ -818,6 +843,70 @@ export function SubtopicView({
     setModalOpen(false);
   };
 
+  const markPdfAsReading = (pdfId: string) => {
+    const updated = dbState.pdfs.map(p => {
+      if (p.id === pdfId) {
+        return {
+          ...p,
+          isReading: true,
+          lastOpenedAt: new Date().toISOString(),
+          status: (p.status === 'completed' ? 'completed' : 'reading') as 'unseen' | 'reading' | 'completed' | 'revision'
+        };
+      }
+      return { ...p, isReading: false };
+    });
+    onUpdateDb({ pdfs: updated });
+  };
+
+  const updatePdfStatus = (pdfId: string, status: 'unseen' | 'reading' | 'completed' | 'revision') => {
+    const updated = dbState.pdfs.map(p => {
+      if (p.id === pdfId) {
+        return {
+          ...p,
+          status,
+          isCompleted: status === 'completed',
+          needsRevision: status === 'revision',
+          // If marked completed, clear current reading focus to avoid confusion
+          isReading: status === 'completed' ? false : p.isReading
+        };
+      }
+      return p;
+    });
+    onUpdateDb({ pdfs: updated });
+  };
+
+  const markNoteAsReading = (noteId: string) => {
+    const updated = dbState.notes.map(n => {
+      if (n.id === noteId) {
+        return {
+          ...n,
+          isReading: true,
+          lastOpenedAt: new Date().toISOString(),
+          status: (n.status === 'completed' ? 'completed' : 'reading') as 'unseen' | 'reading' | 'completed' | 'revision'
+        };
+      }
+      return { ...n, isReading: false };
+    });
+    onUpdateDb({ notes: updated });
+  };
+
+  const updateNoteStatus = (noteId: string, status: 'unseen' | 'reading' | 'completed' | 'revision') => {
+    const updated = dbState.notes.map(n => {
+      if (n.id === noteId) {
+        return {
+          ...n,
+          status,
+          isCompleted: status === 'completed',
+          needsRevision: status === 'revision',
+          // If marked completed, clear focus
+          isReading: status === 'completed' ? false : n.isReading
+        };
+      }
+      return n;
+    });
+    onUpdateDb({ notes: updated });
+  };
+
   // Item removal triggers
   const handleDeleteItem = (itemId: string, field: 'pdfs' | 'notes' | 'videos' | 'concepts' | 'coding' | 'interviews' | 'quizzes') => {
     const array = dbState[field] as any[];
@@ -887,6 +976,65 @@ export function SubtopicView({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl font-sans">
             {subtopic.description || 'Synthesize guides, bookmarks, coding logs and trigger Gemini test sheets.'}
           </p>
+
+          {/* Psychological Study Metrics Bar & Learning Pipeline */}
+          {totalTrackedItems > 0 && (
+            <div className="mt-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 text-left select-none max-w-3xl animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 font-sans pb-1">
+                  <span>🎓 READING COGNITION PROGRESS</span>
+                  <span className="font-mono text-blue-600 dark:text-blue-400">
+                    {Math.round((totalCompletedCount / totalTrackedItems) * 100)}% MASTERED
+                  </span>
+                </div>
+                {/* Visual Progress Bar */}
+                <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
+                    style={{ width: `${(totalCompletedCount / totalTrackedItems) * 100}%` }}
+                  />
+                </div>
+                {/* Counts Indicators */}
+                <div className="flex items-center gap-3.5 text-[10px] font-bold font-sans">
+                  <span className="text-slate-500 dark:text-slate-400">Total: {totalTrackedItems} items</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-emerald-600 dark:text-emerald-400">{totalCompletedCount} Completed</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  <span className="text-amber-600 dark:text-amber-400">{totalActiveCount} Started</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  <span className="text-indigo-600 dark:text-indigo-400">{totalRevisionCount} Revising</span>
+                </div>
+              </div>
+
+              {/* Live Resume Shortcut */}
+              {lastReadItem && (
+                <div className="md:w-72 pl-0 md:pl-4 border-t md:border-t-0 md:border-l border-slate-250 dark:border-slate-800 flex flex-col justify-center gap-1 shrink-0">
+                  <p className="text-[10px] font-mono text-slate-404 dark:text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span>🔖 LAST READ</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  </p>
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-200 line-clamp-1">
+                    {lastReadItem.title}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (lastReadItem.type === 'pdf') {
+                        setActiveTab('pdfs');
+                        // Expand/scroll to it if needed
+                      } else {
+                        setActiveTab('notes');
+                        setExpandedNotes(prev => ({ ...prev, [lastReadItem.id]: true }));
+                      }
+                    }}
+                    className="mt-1 text-[11px] font-bold text-left text-blue-600 hover:text-blue-550 dark:text-blue-400 dark:hover:text-blue-350 cursor-pointer underline flex items-center gap-1"
+                  >
+                    <span>Click to resume reading {lastReadItem.type.toUpperCase()} ➔</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Controls Row (Text Size, Theme, Synced Pill) */}
@@ -1989,34 +2137,79 @@ export function SubtopicView({
           <div className="space-y-6">
             {listNotes.map(note => {
               const isExpanded = !!expandedNotes[note.id];
+              const isReading = !!note.isReading;
+              const status = note.status || 'unseen';
+
+              // Decide border and background color styles based on psychological state
+              let cardStyles = "border-gray-150 dark:border-gray-805 bg-gray-50/20 dark:bg-gray-900/50";
+              let statusBadge = null;
+              let mindsetMessage = "";
+
+              if (isReading) {
+                cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.02] dark:bg-amber-950/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
+              } else if (status === 'completed' || note.isCompleted) {
+                cardStyles = "border-emerald-250 dark:border-emerald-900 bg-emerald-500/[0.01] dark:bg-emerald-950/[0.01]";
+              } else if (status === 'revision' || note.needsRevision) {
+                cardStyles = "border-indigo-250 dark:border-indigo-900 bg-indigo-500/[0.01] dark:bg-indigo-950/[0.01]";
+              } else if (status === 'reading') {
+                cardStyles = "border-amber-200 dark:border-amber-900/60 bg-amber-500/[0.01] dark:bg-amber-950/[0.01]";
+              }
+
+              switch (status) {
+                case 'completed':
+                  statusBadge = <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/20 px-2 py-0.5 rounded-md">✅ MASTERED</span>;
+                  mindsetMessage = "🎉 Excellent! You've completed and mastered this note card.";
+                  break;
+                case 'revision':
+                  statusBadge = <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-indigo-650 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-2 py-0.5 rounded-md">🔄 REVISION PIPELINE</span>;
+                  mindsetMessage = "🧠 Active Recall: Revise this summary today to solidify encoding.";
+                  break;
+                case 'reading':
+                  statusBadge = <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-655 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/20 px-2 py-0.5 rounded-md">📖 IN PROGRESS</span>;
+                  mindsetMessage = "⚡ Active encoding focus: Read thoroughly and synthesize concept maps.";
+                  break;
+                default:
+                  statusBadge = <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-2 py-0.5 rounded-md">⏳ NOT STARTED</span>;
+                  mindsetMessage = "🌱 Fresh resource card: Tap to read and trigger learning circuits.";
+              }
+
               return (
-                <div key={note.id} className="p-5 rounded-2xl border border-gray-150 dark:border-gray-805 bg-gray-50/20 dark:bg-gray-900/50 relative group">
-                  <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div 
+                  key={note.id} 
+                  className={`p-5 rounded-2xl border transition-all duration-200 relative group text-left ${cardStyles}`}
+                >
+                  {/* Action Buttons Top Right Overlay */}
+                  <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <button 
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCopyText(note.content, note.id);
                       }}
-                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-150 dark:border-gray-700 transition"
+                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-150 dark:border-gray-700 transition cursor-pointer"
+                      title="Copy note text"
                     >
                       {copiedItem === note.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                     </button>
                     <button 
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleStartEdit(note, 'notes');
                       }}
-                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-blue-600 dark:hover:text-blue-450 border border-gray-150 dark:border-gray-700 transition"
+                      className="p-1.5 rounded-lg bg-white dark:bg-gray-800 text-gray-500 hover:text-blue-600 dark:hover:text-blue-450 border border-gray-150 dark:border-gray-700 transition cursor-pointer"
                       title="Edit Note"
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
                     <button 
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteItem(note.id, 'notes');
                       }}
-                      className="p-1.5 rounded-lg bg-red-50 text-red-650 hover:text-red-750 transition"
+                      className="p-1.5 rounded-lg bg-red-50 text-red-650 hover:text-red-750 transition cursor-pointer"
+                      title="Delete Note"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -2027,7 +2220,7 @@ export function SubtopicView({
                     onClick={() => toggleNoteExpansion(note.id)}
                     className="flex items-start gap-3.5 cursor-pointer select-none"
                   >
-                    <div className="mt-0.5 shrink-0 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-500/10 dark:hover:bg-amber-500/10 transition-all duration-200">
+                    <div className="mt-1 shrink-0 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-500/10 dark:hover:bg-amber-500/10 transition-all duration-200">
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4 text-amber-505 dark:text-amber-400" />
                       ) : (
@@ -2035,12 +2228,22 @@ export function SubtopicView({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-base md:text-lg font-bold text-gray-900 dark:text-white font-sans pr-14 leading-tight group-hover:text-amber-505 dark:group-hover:text-amber-400 transition-colors">
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        {statusBadge}
+                        {isReading && (
+                          <span className="text-[10px] font-black tracking-wider text-amber-600 bg-amber-500/15 px-2 py-0.5 rounded-md animate-pulse">
+                            🔖 LAST READ
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="text-base md:text-lg font-bold text-gray-900 dark:text-white font-sans pr-14 leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-450 transition-colors">
                         {note.title}
                       </h4>
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-1.5">
-                        Modified: {new Date(note.updatedAt).toLocaleDateString()}
-                      </div>
+                      
+                      <p className="text-[10px] text-slate-450 dark:text-slate-500 mt-1.5 font-sans italic">
+                        {mindsetMessage}
+                      </p>
                     </div>
                   </div>
 
@@ -2050,6 +2253,63 @@ export function SubtopicView({
                       {renderSimpleMarkdown(note.content)}
                     </div>
                   )}
+
+                  {/* Interactive Phase/Status Manager Segment Panel */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-dashed border-gray-150 dark:border-gray-800">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase font-mono mr-1.5">Change Status:</span>
+                      <div className="inline-flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateNoteStatus(note.id, 'unseen'); }}
+                          className={`px-2 py-1 rounded-lg text-[9px] font-bold tracking-tight cursor-pointer transition-all ${
+                            status === 'unseen'
+                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-3xs font-black'
+                              : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'
+                          }`}
+                        >
+                          ⏳ Unstarted
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateNoteStatus(note.id, 'reading'); }}
+                          className={`px-2 py-1 rounded-lg text-[9px] font-bold tracking-tight cursor-pointer transition-all ${
+                            status === 'reading'
+                              ? 'bg-amber-500 text-white dark:bg-amber-600 dark:text-slate-100 shadow-3xs font-black'
+                              : 'text-slate-450 dark:text-slate-500 hover:text-amber-550 dark:hover:text-amber-400'
+                          }`}
+                        >
+                          📖 Reading
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateNoteStatus(note.id, 'completed'); }}
+                          className={`px-2 py-1 rounded-lg text-[9px] font-bold tracking-tight cursor-pointer transition-all ${
+                            status === 'completed'
+                              ? 'bg-emerald-600 text-white dark:bg-emerald-600 dark:text-slate-100 shadow-3xs font-black'
+                              : 'text-slate-450 dark:text-slate-500 hover:text-emerald-550 dark:hover:text-emerald-400'
+                          }`}
+                        >
+                          ✅ Completed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateNoteStatus(note.id, 'revision'); }}
+                          className={`px-2 py-1 rounded-lg text-[9px] font-bold tracking-tight cursor-pointer transition-all ${
+                            status === 'revision'
+                              ? 'bg-indigo-605 text-white dark:bg-indigo-600 dark:text-slate-100 shadow-3xs font-black'
+                              : 'text-slate-450 dark:text-slate-500 hover:text-indigo-650 dark:hover:text-indigo-400'
+                          }`}
+                        >
+                          🔄 Revise
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono self-end sm:self-center">
+                      Modified: {new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'numeric', day: 'numeric', year: '2-digit'})}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -2068,11 +2328,14 @@ export function SubtopicView({
             {listPdfs.map(pdf => {
               const handleOpenPdfFile = (e: React.MouseEvent) => {
                 // Ensure we don't open the PDF if clicking delete
-                if ((e.target as HTMLElement).closest('.delete-pdf-btn')) {
+                if ((e.target as HTMLElement).closest('.delete-pdf-btn') || (e.target as HTMLElement).closest('.status-btn')) {
                   return;
                 }
                 e.preventDefault();
                 e.stopPropagation();
+
+                // Save reading state & last opened time in DB
+                markPdfAsReading(pdf.id);
 
                 if (pdf.url) {
                   window.open(pdf.url, '_blank');
@@ -2106,90 +2369,198 @@ export function SubtopicView({
                 }
               };
 
+              const isReading = !!pdf.isReading;
+              const status = pdf.status || 'unseen';
+
+              // Visual styling for PDF cards based on learning state
+              let cardStyles = "border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/40";
+              let statusBadge = null;
+              let encouragementMsg = "";
+
+              if (isReading) {
+                cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.04] dark:bg-amber-955/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
+              } else if (status === 'completed' || pdf.isCompleted) {
+                cardStyles = "border-emerald-250 dark:border-emerald-900 bg-emerald-500/[0.01]/10 dark:bg-emerald-950/[0.01]";
+              } else if (status === 'revision' || pdf.needsRevision) {
+                cardStyles = "border-indigo-250 dark:border-indigo-900 bg-indigo-500/[0.01] dark:bg-indigo-950/[0.01]";
+              } else if (status === 'reading') {
+                cardStyles = "border-amber-200 dark:border-amber-900/60 bg-amber-500/[0.01] dark:bg-amber-950/[0.01]";
+              }
+
+              switch (status) {
+                case 'completed':
+                  statusBadge = <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/25 px-1.5 py-0.5 rounded">🎉 READ</span>;
+                  encouragementMsg = "Double-tap to open reference! Perfect mastery achieved.";
+                  break;
+                case 'revision':
+                  statusBadge = <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold text-indigo-600 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-1.5 py-0.5 rounded">🔄 SPACING ACTIVE</span>;
+                  encouragementMsg = "Plan a quick recall loop of these document concepts today.";
+                  break;
+                case 'reading':
+                  statusBadge = <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold text-amber-600 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/25 px-1.5 py-0.5 rounded">📖 READING NOW</span>;
+                  encouragementMsg = "Active learning active. Absorb, summarize and write outline codes.";
+                  break;
+                default:
+                  statusBadge = <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-1.5 py-0.5 rounded">⏳ UNREAD</span>;
+                  encouragementMsg = "Unopened curriculum log. Tap Preview to unlock reading maps.";
+              }
+
               return (
                 <div 
                   key={pdf.id} 
                   onClick={handleOpenPdfFile}
-                  className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:border-blue-300 dark:hover:border-blue-900 transition-all cursor-pointer"
+                  className={`group flex flex-col p-4 rounded-xl border transition-all cursor-pointer ${cardStyles}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-red-100 text-red-650 flex items-center justify-center shrink-0">
-                      <FileText className="w-5.5 h-5.5 text-red-600" />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/30 text-red-650 flex items-center justify-center shrink-0">
+                        <FileText className="w-5.5 h-5.5 text-red-600" />
+                      </div>
+                      <div className="text-left">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          {statusBadge}
+                          {isReading && (
+                            <span className="text-[9px] font-black tracking-wider text-amber-600 bg-amber-500/15 px-1.5 py-0.5 rounded animate-pulse">
+                              🔖 LAST OPENED
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm font-sans leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {pdf.title}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-1 font-mono flex flex-wrap items-center gap-1.5">
+                          <span className={`px-1 py-0.2 rounded text-[8px] uppercase font-bold tracking-wider ${
+                            pdf.url ? 'bg-blue-100 dark:bg-blue-950/45 text-blue-600 dark:text-blue-400' : 'bg-emerald-100 dark:bg-emerald-950/45 text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {pdf.url ? 'Web URL' : 'Local File'}
+                          </span>
+                          <span className="truncate max-w-[150px] sm:max-w-xs">{pdf.fileName}</span>
+                          <span>({pdf.fileSize})</span>
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm font-sans leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {pdf.title}
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-1 font-mono flex flex-wrap items-center gap-1.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
-                          pdf.url ? 'bg-blue-100 dark:bg-blue-950/45 text-blue-600 dark:text-blue-400' : 'bg-emerald-100 dark:bg-emerald-950/45 text-emerald-600 dark:text-emerald-400'
-                        }`}>
-                          {pdf.url ? 'Web URL' : 'Local File'}
-                        </span>
-                        <span>
-                          {pdf.fileName} ({pdf.fileSize})
-                        </span>
-                      </p>
+
+                    <div className="flex items-center gap-1.5 sm:self-center justify-end">
+                      {/* Preview Option Button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markPdfAsReading(pdf.id);
+                          handleOpenPdfFile(e);
+                        }}
+                        className="px-2.5 py-1 text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805 transition-colors flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider font-mono border border-slate-200/50 dark:border-slate-705 cursor-pointer"
+                        title="Preview PDF File"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Preview</span>
+                      </button>
+
+                      {/* Open Option Button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markPdfAsReading(pdf.id);
+                          handleOpenPdfFile(e);
+                        }}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider font-mono shadow-3xs cursor-pointer"
+                        title="Open PDF File directly"
+                      >
+                        <BookOpen className="w-3 h-3" />
+                        <span>Open</span>
+                      </button>
+
+                      {/* Edit PDF Button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartEdit(pdf, 'pdfs');
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/60 transition-colors cursor-pointer"
+                        title="Edit PDF / Link"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Delete PDF Button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteItem(pdf.id, 'pdfs');
+                        }}
+                        className="delete-pdf-btn p-1.5 text-slate-404 hover:text-red-650 rounded-lg hover:bg-red-50 dark:hover:bg-red-955/20 transition-colors cursor-pointer"
+                        title="Delete PDF"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-3 sm:mt-0 justify-end">
-                    {/* Preview Option Button */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPdfFile(e);
-                      }}
-                      className="px-3 py-1.5 text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805 transition-colors flex items-center gap-1 text-xs font-semibold uppercase tracking-wider font-mono border border-slate-200/50 dark:border-slate-705 cursor-pointer"
-                      title="Preview PDF File"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Preview</span>
-                    </button>
+                  {/* Encouragement text line & dynamic status control bar */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-3 pt-3 border-t border-dashed border-slate-200/60 dark:border-slate-800 w-full">
+                    <p className="text-[10px] text-slate-450 dark:text-slate-500 italic text-left">
+                      💡 {encouragementMsg}
+                    </p>
 
-                    {/* Open Option Button */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPdfFile(e);
-                      }}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold uppercase tracking-wider font-mono shadow-sm cursor-pointer"
-                      title="Open PDF File directly"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Open</span>
-                    </button>
-
-                    {/* Edit PDF Button */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(pdf, 'pdfs');
-                      }}
-                      className="p-2 text-slate-400 hover:text-blue-600 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-805/60 transition-colors cursor-pointer"
-                      title="Edit PDF / Link"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-
-                    {/* Delete PDF Button */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteItem(pdf.id, 'pdfs');
-                      }}
-                      className="delete-pdf-btn p-2 text-slate-400 hover:text-red-650 rounded-lg hover:bg-red-50 dark:hover:bg-red-955/20 transition-colors cursor-pointer"
-                      title="Delete PDF"
-                    >
-                      <Trash2 className="w-4.5 h-4.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5 self-start sm:self-center">
+                      <span className="text-[9px] font-bold text-slate-400 font-mono tracking-wider">STATUS:</span>
+                      <div className="inline-flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updatePdfStatus(pdf.id, 'unseen'); }}
+                          className={`status-btn px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                            status === 'unseen'
+                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 shadow-3xs font-black'
+                              : 'text-slate-400 hover:text-slate-700'
+                          }`}
+                        >
+                          ⏳ Unread
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updatePdfStatus(pdf.id, 'reading'); }}
+                          className={`status-btn px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                            status === 'reading'
+                              ? 'bg-amber-500 text-white shadow-3xs font-black'
+                              : 'text-slate-400 hover:text-amber-550'
+                          }`}
+                        >
+                          📖 Reading
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updatePdfStatus(pdf.id, 'completed'); }}
+                          className={`status-btn px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                            status === 'completed'
+                              ? 'bg-emerald-600 text-white shadow-3xs font-black'
+                              : 'text-slate-400 hover:text-emerald-550'
+                          }`}
+                        >
+                          ✅ Done
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updatePdfStatus(pdf.id, 'revision'); }}
+                          className={`status-btn px-1.5 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                            status === 'revision'
+                              ? 'bg-indigo-600 text-white shadow-3xs font-black'
+                              : 'text-slate-400 hover:text-indigo-500'
+                          }`}
+                        >
+                          🔄 Revise
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
             })}
 
             {listPdfs.length === 0 && (
-              <div className="py-12 text-center text-gray-405 dark:text-gray-500 italic">
+              <div className="py-12 text-center text-gray-450 dark:text-gray-500 italic">
                 Nothing in PDF files yet. Add one.
               </div>
             )}

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   FileText, Search, Plus, Trash2, ExternalLink, Download, Layers, 
-  Sparkles, AlertCircle, Check, HelpCircle, X, ArrowLeft, ArrowRight, Upload, Link
+  Sparkles, AlertCircle, Check, HelpCircle, X, ArrowLeft, ArrowRight, Upload, Link, GripVertical
 } from 'lucide-react';
 import { DatabaseState, PdfItem, Subtopic, Topic } from '../types';
 
@@ -17,6 +17,50 @@ export function AllPdfsView({ dbState, onOpenSubtopic, onUpdateDb }: AllPdfsView
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('all');
+
+  // Drag and drop states for manual PDF reordering
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    setDraggedId(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedId !== id) {
+      setDragOverId(id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDragOverId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+
+    const sourceIdx = pdfs.findIndex(p => p.id === draggedId);
+    const targetIdx = pdfs.findIndex(p => p.id === targetId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updated = [...pdfs];
+      const [movedItem] = updated.splice(sourceIdx, 1);
+      updated.splice(targetIdx, 0, movedItem);
+      onUpdateDb({ pdfs: updated });
+    }
+
+    setDraggedId(null);
+    setDragOverId(null);
+  };
 
   // Pop-up Wizard states (condensed 2-step flow)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +84,37 @@ export function AllPdfsView({ dbState, onOpenSubtopic, onUpdateDb }: AllPdfsView
 
   const handleDeleteItem = (itemId: string) => {
     const updated = pdfs.filter(p => p.id !== itemId);
+    onUpdateDb({ pdfs: updated });
+  };
+
+  const markPdfAsReading = (pdfId: string) => {
+    const updated = pdfs.map(p => {
+      if (p.id === pdfId) {
+        return {
+          ...p,
+          isReading: true,
+          lastOpenedAt: new Date().toISOString(),
+          status: (p.status === 'completed' ? 'completed' : 'reading') as 'unseen' | 'reading' | 'completed' | 'revision'
+        };
+      }
+      return { ...p, isReading: false };
+    });
+    onUpdateDb({ pdfs: updated });
+  };
+
+  const updatePdfStatus = (pdfId: string, status: 'unseen' | 'reading' | 'completed' | 'revision') => {
+    const updated = pdfs.map(p => {
+      if (p.id === pdfId) {
+        return {
+          ...p,
+          status,
+          isCompleted: status === 'completed',
+          needsRevision: status === 'revision',
+          isReading: status === 'completed' ? false : p.isReading
+        };
+      }
+      return p;
+    });
     onUpdateDb({ pdfs: updated });
   };
 
@@ -221,7 +296,7 @@ export function AllPdfsView({ dbState, onOpenSubtopic, onUpdateDb }: AllPdfsView
             <span>Curriculum References & Whitepapers</span>
           </h2>
           <p className="text-sm font-medium text-slate-555 dark:text-slate-450 mt-2 font-sans max-w-3xl">
-            Index, download, and read PDF cheatsheets, RFC whitepapers, and academic citations uploaded to subtopic segments. Access base64 resource maps or open bookmarks directly.
+            Index, download, and read PDF cheatsheets, RFC whitepapers, and academic citations uploaded to subtopic segments. Drag and drop any reference card up, down, left, or right to customize your display sequence.
           </p>
         </div>
 
@@ -268,79 +343,193 @@ export function AllPdfsView({ dbState, onOpenSubtopic, onUpdateDb }: AllPdfsView
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPdfs.map(item => {
           const { sub, topic } = getSubtopicPath(item.subtopicId);
+          const isReading = !!item.isReading;
+          const status = item.status || 'unseen';
 
-          return (
-            <div 
-              key={item.id}
-              className="bg-white dark:bg-slate-900 border border-slate-202 dark:border-slate-850 rounded-2xl p-5 flex flex-col justify-between gap-4 transition-colors hover:border-blue-400 dark:hover:border-slate-750 shadow-3xs text-left"
-            >
-              {/* Top metadata row */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-1">
-                  {sub && topic ? (
+            // Decide border and background styles based on learning status
+            let cardStyles = "border-slate-202 dark:border-slate-850 bg-white dark:bg-slate-900";
+            let statusBadge = null;
+
+            if (isReading) {
+              cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.04] dark:bg-amber-955/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
+            } else if (status === 'completed' || item.isCompleted) {
+              cardStyles = "border-emerald-250 dark:border-emerald-900/60 bg-emerald-500/[0.005] dark:bg-emerald-950/[0.005]";
+            } else if (status === 'revision' || item.needsRevision) {
+              cardStyles = "border-indigo-250 dark:border-indigo-900/65 bg-indigo-500/[0.005] dark:bg-indigo-950/[0.005]";
+            } else if (status === 'reading') {
+              cardStyles = "border-amber-200 dark:border-amber-900/60 bg-amber-500/[0.005] dark:bg-amber-950/[0.005]";
+            }
+
+            switch (status) {
+              case 'completed':
+                statusBadge = <span className="text-[9px] font-black text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/20 px-1.5 py-0.5 rounded">🎉 DONE</span>;
+                break;
+              case 'revision':
+                statusBadge = <span className="text-[9px] font-black text-indigo-600 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-1.5 py-0.5 rounded">🔄 REVISE</span>;
+                break;
+              case 'reading':
+                statusBadge = <span className="text-[9px] font-black text-amber-600 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/20 px-1.5 py-0.5 rounded">📖 READING</span>;
+                break;
+              default:
+                statusBadge = <span className="text-[9px] font-black text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-1.5 py-0.5 rounded">⏳ UNREAD</span>;
+            }
+
+            return (
+              <div 
+                key={item.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, item.id)}
+                onDragEnd={handleDragEnd}
+                onClick={() => markPdfAsReading(item.id)}
+                className={`border rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all hover:border-blue-400 dark:hover:border-slate-700 shadow-3xs text-left cursor-grab active:cursor-grabbing ${cardStyles} ${
+                  draggedId === item.id 
+                    ? 'opacity-40 border-dashed border-blue-500 dark:border-blue-400 scale-95 shadow-sm bg-slate-50/50 dark:bg-slate-950/40' 
+                    : ''
+                } ${
+                  dragOverId === item.id 
+                    ? 'border-blue-500 dark:border-blue-400 scale-102 ring-2 ring-blue-500/20 bg-blue-50/10 dark:bg-blue-950/15' 
+                    : ''
+                }`}
+              >
+                {/* Top metadata row */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0 cursor-grab hover:text-slate-600 dark:hover:text-slate-300" />
+                      {sub && topic ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenSubtopic(topic.id, sub.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 text-slate-505 hover:text-blue-650 text-[10px] font-bold font-mono tracking-wide truncate transition-colors cursor-pointer dark:hover:text-blue-450"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: topic.color }} />
+                          <span>{topic.name}</span>
+                          <span className="text-slate-400 font-sans">➔</span>
+                          <span className="underline truncate">{sub.name}</span>
+                        </button>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 font-mono">Attachment</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {statusBadge}
+                      {isReading && (
+                        <span className="text-[8px] font-black tracking-wider text-amber-605 bg-amber-500/15 px-1 py-0.5 rounded animate-pulse">
+                          🔖 LAST READ
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* File Title and Filename */}
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2">
+                    {item.title}
+                  </h4>
+
+                  <p className="text-xs text-slate-450 dark:text-slate-450 truncate font-mono bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border dark:border-slate-805">
+                    📄 {item.fileName} ({item.fileSize})
+                  </p>
+                </div>
+
+                {/* Status Switcher segment */}
+                <div className="flex items-center justify-between pb-1 pt-1 border-t border-b border-slate-100/60 dark:border-slate-805/60">
+                  <span className="text-[9px] font-bold text-slate-400 font-mono uppercase">Status Selector:</span>
+                  <div className="inline-flex bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg">
                     <button
-                      onClick={() => onOpenSubtopic(topic.id, sub.id)}
-                      className="inline-flex items-center gap-1.5 text-slate-505 hover:text-blue-650 text-[10px] font-bold font-mono tracking-wide truncate transition-colors cursor-pointer dark:hover:text-blue-450"
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); updatePdfStatus(item.id, 'unseen'); }}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer transition-all ${
+                        status === 'unseen'
+                          ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: topic.color }} />
-                      <span>{topic.name}</span>
-                      <span className="text-slate-400 font-sans">➔</span>
-                      <span className="underline truncate">{sub.name}</span>
+                      Unread
                     </button>
-                  ) : (
-                    <span className="text-[9px] text-slate-400 font-mono">Attachment</span>
-                  )}
-
-                  <span className="text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 px-2 py-0.5 rounded">
-                    {item.fileSize}
-                  </span>
-                </div>
-
-                {/* File Title and Filename */}
-                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2">
-                  {item.title}
-                </h4>
-
-                <p className="text-xs text-slate-450 dark:text-slate-400 truncate font-mono bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border dark:border-slate-805">
-                  📄 {item.fileName}
-                </p>
-              </div>
-
-              {/* Interaction actions */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownloadOfflineData(item)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-sans text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{item.fileData ? 'Download Local' : 'Browse URL'}</span>
-                  </button>
-
-                  {item.url && (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 text-slate-450 hover:text-blue-605 dark:text-slate-400 rounded-lg hover:bg-slate-100/60 dark:hover:bg-slate-800/60 transition-colors"
-                      title="Open bookmark external reference URL"
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); updatePdfStatus(item.id, 'reading'); }}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer transition-all ${
+                        status === 'reading'
+                          ? 'bg-amber-500 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-amber-550'
+                      }`}
                     >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
+                      Read
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); updatePdfStatus(item.id, 'completed'); }}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer transition-all ${
+                        status === 'completed'
+                          ? 'bg-emerald-600 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-emerald-555'
+                      }`}
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); updatePdfStatus(item.id, 'revision'); }}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer transition-all ${
+                        status === 'revision'
+                          ? 'bg-indigo-600 text-white shadow-3xs font-black'
+                          : 'text-slate-400 hover:text-indigo-505'
+                      }`}
+                    >
+                      Revise
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  onClick={() => handleDeleteItem(item.id)}
-                  className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-55 dark:hover:bg-slate-805 transition-colors cursor-pointer"
-                  title="Remove reference bookmark"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {/* Interaction actions */}
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markPdfAsReading(item.id);
+                        handleDownloadOfflineData(item);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-sans text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Open File</span>
+                    </button>
+
+                    {item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1 px-1.5 text-slate-450 hover:text-blue-605 dark:text-slate-400 rounded-lg hover:bg-slate-100/65 dark:hover:bg-slate-800/60 transition-colors"
+                        title="Open external reference bookmark URL"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteItem(item.id);
+                    }}
+                    className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-55 dark:hover:bg-slate-805 transition-colors cursor-pointer"
+                    title="Remove reference bookmark"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
         {filteredPdfs.length === 0 && (
           <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-205 dark:border-slate-855 rounded-3xl bg-slate-50/10 animate-fade-in">

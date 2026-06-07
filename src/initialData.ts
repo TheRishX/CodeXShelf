@@ -293,5 +293,41 @@ setInterval(leak, 100); // leakReference grows exponentially
       notes: 'Visualization represents an amazing neural anchor! Study the interactive visualization page closely.',
       createdAt: '2026-06-01T15:30:05Z'
     }
+  ],
+  todos: [
+    {
+      id: 'todo-1',
+      title: 'Active Recall Check: React Fiber Scheduler vs Stack Reconciler',
+      description: 'Force your brain to retrieve and verbally explain the difference out loud. Can you map how work units (fibers) bypass stack limitations?',
+      category: 'active_recall',
+      priority: 'learning_milestone',
+      status: 'todo',
+      createdAt: '2026-06-07T08:00:00Z',
+      difficultyEstimate: 'deep_analytical',
+      notes: ''
+    },
+    {
+      id: 'todo-2',
+      title: 'Blind Spot: Debunk the Myth of Client-Side API Security',
+      description: 'Common developer trap: Storing third-party production secrets inside client React `.env` files. Build an Express proxy route to isolate them safely.',
+      category: 'blind_spot_clarify',
+      priority: 'critical_blocker',
+      status: 'in_progress',
+      createdAt: '2026-06-07T09:12:00Z',
+      difficultyEstimate: 'quick_win',
+      notes: 'Keep secrets strictly on server node environments.'
+    },
+    {
+      id: 'todo-3',
+      title: 'Interval Study: Space-Optimized Knapsack DP Formulation',
+      description: 'Solidify your memory consolidation of the 1D-array DP state optimization before recall decays.',
+      category: 'revision',
+      priority: 'casual_deep_dive',
+      status: 'completed',
+      createdAt: '2026-06-06T14:30:00Z',
+      completedAt: '2026-06-06T15:45:00Z',
+      difficultyEstimate: 'epic_conceptual',
+      notes: 'Iterate backwards from Capacity down to item weight to rely on the current step\'s unmutated states!'
+    }
   ]
 };

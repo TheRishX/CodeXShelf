@@ -25,6 +25,11 @@ export interface PdfItem {
   fileData?: string; // Base64 data for offline access
   url?: string; // Web URL link for public papers
   createdAt: string;
+  isReading?: boolean;
+  isCompleted?: boolean;
+  needsRevision?: boolean;
+  lastOpenedAt?: string;
+  status?: 'unseen' | 'reading' | 'completed' | 'revision';
 }
 
 export interface NoteItem {
@@ -34,6 +39,11 @@ export interface NoteItem {
   content: string;
   createdAt: string;
   updatedAt: string;
+  isReading?: boolean;
+  isCompleted?: boolean;
+  needsRevision?: boolean;
+  lastOpenedAt?: string;
+  status?: 'unseen' | 'reading' | 'completed' | 'revision';
 }
 
 export interface VideoItem {
@@ -123,6 +133,20 @@ export interface AssignmentItem {
   createdAt: string;
 }
 
+export interface StudyTodoItem {
+  id: string;
+  title: string;
+  description?: string;
+  category: 'concept_synthesize' | 'active_recall' | 'blind_spot_clarify' | 'interview_simulate' | 'coding_practice' | 'revision';
+  priority: 'critical_blocker' | 'learning_milestone' | 'casual_deep_dive';
+  status: 'todo' | 'in_progress' | 'completed';
+  subtopicId?: string; // optional relation to subtopic
+  createdAt: string;
+  completedAt?: string;
+  notes?: string; // psychological takeaways for consolidation
+  difficultyEstimate?: 'quick_win' | 'deep_analytical' | 'epic_conceptual';
+}
+
 export interface DatabaseState {
   topics: Topic[];
   subtopics: Subtopic[];
@@ -137,6 +161,11 @@ export interface DatabaseState {
   vaultItems?: VaultItem[];
   vaultCategories?: string[];
   assignments?: AssignmentItem[];
+  todos?: StudyTodoItem[];
+  streak?: {
+    count: number;
+    lastActiveDate: string;
+  };
 }
 
 export interface CustomUser {
