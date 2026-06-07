@@ -11,12 +11,14 @@ interface AllTopicshelfViewProps {
   onOpenSubtopic: (topicId: string, subtopicId: string) => void;
   onAddTopic: (topic: Omit<Topic, 'id' | 'createdAt'>) => void;
   onDeleteTopic: (topicId: string) => void;
+  onUpdateDb?: (updates: Partial<DatabaseState>) => void;
 }
 
 // Map the stored icon names to lucide components
 import { 
   GraduationCap, Code, Database, Cloud, Cpu, Atom, Terminal, Globe,
-  BrainCircuit, Compass, Sparkles, Coffee, Lock, Server, Landmark
+  BrainCircuit, Compass, Sparkles, Coffee, Lock, Server, Landmark,
+  GripVertical
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -44,11 +46,60 @@ export function AllTopicshelfView({
   onSelectView,
   onOpenSubtopic,
   onAddTopic,
-  onDeleteTopic
+  onDeleteTopic,
+  onUpdateDb
 }: AllTopicshelfViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'newest' | 'resources'>('newest');
+  const [sortBy, setSortBy] = useState<'manual' | 'name' | 'newest' | 'resources'>('manual');
   const [colorFilter, setColorFilter] = useState<string>('all');
+
+  // Drag and drop states for Topicshelf cards
+  const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
+  const [dragOverTopicId, setDragOverTopicId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    setDraggedTopicId(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedTopicId !== id) {
+      setDragOverTopicId(id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTopicId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTopicId(null);
+    setDragOverTopicId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedTopicId || draggedTopicId === targetId) return;
+
+    const sourceIdx = topics.findIndex(t => t.id === draggedTopicId);
+    const targetIdx = topics.findIndex(t => t.id === targetId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updated = [...topics];
+      const [movedItem] = updated.splice(sourceIdx, 1);
+      // find target index again after splice
+      const newTargetIdx = updated.findIndex(t => t.id === targetId);
+      updated.splice(newTargetIdx, 0, movedItem);
+      if (onUpdateDb) {
+        onUpdateDb({ topics: updated });
+      }
+    }
+
+    setDraggedTopicId(null);
+    setDragOverTopicId(null);
+  };
   
   // Modal state for quick add topic 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -115,19 +166,20 @@ export function AllTopicshelfView({
                           topic.description.toLowerCase().includes(searchTerm.toLowerCase());
       const matchColor = colorFilter === 'all' || topic.color === colorFilter;
       return matchSearch && matchColor;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'name') {
-        return a.name.localeCompare(b.name);
-      }
-      if (sortBy === 'resources') {
-        const metA = getTopicMetrics(a.id).totalResources;
-        const metB = getTopicMetrics(b.id).totalResources;
-        return metB - metA; // descending
-      }
-      // default: newest first
-      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
+
+  if (sortBy === 'name') {
+    filteredTopics.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortBy === 'resources') {
+    filteredTopics.sort((a, b) => {
+      const metA = getTopicMetrics(a.id).totalResources;
+      const metB = getTopicMetrics(b.id).totalResources;
+      return metB - metA; // descending
+    });
+  } else if (sortBy === 'newest') {
+    filteredTopics.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+  }
+  // Keep original order if sortBy === 'manual' (the manual drag sequence)
 
   // Global Shelf Statistics
   const totalGlobalResources = topics.reduce((acc, topic) => acc + getTopicMetrics(topic.id).totalResources, 0);
@@ -223,6 +275,7 @@ export function AllTopicshelfView({
               onChange={(e: any) => setSortBy(e.target.value)}
               className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-202 dark:border-slate-802 rounded-xl text-[11px] font-bold px-2 py-1.5 focus:outline-none cursor-pointer"
             >
+              <option value="manual">Order: Custom Drag & Drop</option>
               <option value="newest">Order: Date Added</option>
               <option value="name">Order: Alphabetical</option>
               <option value="resources">Order: Asset Density</option>
@@ -254,21 +307,41 @@ export function AllTopicshelfView({
         {filteredTopics.map(topic => {
           const metrics = getTopicMetrics(topic.id);
           const IconComponent = ICON_MAP[topic.icon] || GraduationCap;
+          const isOver = dragOverTopicId === topic.id;
+          const isDragged = draggedTopicId === topic.id;
 
           return (
             <div
               key={topic.id}
-              className="group bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 rounded-3xl overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200 text-left flex flex-col justify-between"
+              draggable={sortBy === 'manual'}
+              onDragStart={(e) => handleDragStart(e, topic.id)}
+              onDragOver={(e) => handleDragOver(e, topic.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, topic.id)}
+              onDragEnd={handleDragEnd}
+              className={`group bg-white dark:bg-slate-900 border rounded-3xl overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200 text-left flex flex-col justify-between select-none ${
+                isOver ? 'border-dashed border-blue-500 bg-blue-50/10 dark:bg-blue-950/20 translate-y-1 scale-[1.01]' : 'border-slate-205 dark:border-slate-805'
+              } ${isDragged ? 'opacity-30' : ''}`}
             >
               <div className="p-6 space-y-4">
                 
                 {/* Upper folder label tab layout */}
                 <div className="flex items-center justify-between gap-3">
-                  <div 
-                    className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
-                    style={{ backgroundColor: `${topic.color}15`, color: topic.color }}
-                  >
-                    <IconComponent className="w-5 h-5" />
+                  <div className="flex items-center gap-2">
+                    {sortBy === 'manual' && (
+                      <div 
+                        className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg text-slate-400 dark:text-slate-600 transition-colors" 
+                        title="Drag to reorder topic"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div 
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
+                      style={{ backgroundColor: `${topic.color}15`, color: topic.color }}
+                    >
+                      <IconComponent className="w-5 h-5" />
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1">

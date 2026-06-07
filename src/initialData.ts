@@ -329,5 +329,6 @@ setInterval(leak, 100); // leakReference grows exponentially
       difficultyEstimate: 'epic_conceptual',
       notes: 'Iterate backwards from Capacity down to item weight to rely on the current step\'s unmutated states!'
     }
-  ]
+  ],
+  quickNotes: []
 };

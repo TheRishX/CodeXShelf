@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, Layers, BookOpen, FileText, HelpCircle, ArrowRight, CheckCircle2, AlertCircle,
   GraduationCap, Coffee, Code, Database, ChevronRight, PlayCircle, Download, Upload, ShieldAlert,
-  Trash2, Plus, X, ThumbsUp, Check, XCircle, Flame, Zap, RotateCcw, Info
+  Trash2, Plus, X, ThumbsUp, Check, XCircle, Flame, Zap, RotateCcw, Info, Mic
 } from 'lucide-react';
-import { DatabaseState, Topic, Subtopic } from '../types';
+import { DatabaseState, Topic, Subtopic, NoteItem, PdfItem, ConceptItem, VaultItem } from '../types';
 
 interface DashboardProps {
   dbState: DatabaseState;

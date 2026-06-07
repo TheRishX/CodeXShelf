@@ -46,6 +46,17 @@ export interface NoteItem {
   status?: 'unseen' | 'reading' | 'completed' | 'revision';
 }
 
+export interface QuickNoteItem {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  isPinned?: boolean;
+  isFavorite?: boolean;
+  color?: string;
+}
+
 export interface VideoItem {
   id: string;
   subtopicId: string;
@@ -131,6 +142,8 @@ export interface AssignmentItem {
   status: 'Awaiting Solution' | 'In Progress' | 'Completed' | 'Perfected';
   notes?: string;
   createdAt: string;
+  isPinned?: boolean;
+  isSolving?: boolean;
 }
 
 export interface StudyTodoItem {
@@ -162,10 +175,13 @@ export interface DatabaseState {
   vaultCategories?: string[];
   assignments?: AssignmentItem[];
   todos?: StudyTodoItem[];
+  quickNotes?: QuickNoteItem[];
   streak?: {
     count: number;
     lastActiveDate: string;
   };
+  sidebarOrder?: string[];
+  customMenuLabels?: Record<string, string>;
 }
 
 export interface CustomUser {

@@ -3,9 +3,10 @@ import {
   Plus, Sun, Moon, Sparkles, LogOut, Check, CloudLightning, RefreshCw, Menu, X,
   GraduationCap, Code, Database, Cloud, Cpu, Layers, Atom, Terminal, Globe,
   Network, BrainCircuit, Compass, Award, Coffee, Lock, FileText, Server, Landmark,
-  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop, Flame
+  Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop, Flame, GripVertical,
+  Pencil
 } from 'lucide-react';
-import { Topic, CustomUser } from '../types';
+import { Topic, CustomUser, DatabaseState } from '../types';
 
 interface SidebarProps {
   topics: Topic[];
@@ -21,6 +22,9 @@ interface SidebarProps {
     count: number;
     lastActiveDate: string;
   };
+  sidebarOrder?: string[];
+  onUpdateDb?: (updates: Partial<DatabaseState>) => void;
+  customMenuLabels?: Record<string, string>;
 }
 
 const AVAILABLE_ICONS = [
@@ -64,7 +68,10 @@ export function Sidebar({
   isDarkMode,
   onToggleTheme,
   syncStatus,
-  streak
+  streak,
+  sidebarOrder,
+  onUpdateDb,
+  customMenuLabels
 }: SidebarProps) {
   const todayStr = (() => {
     const d = new Date();
@@ -79,6 +86,34 @@ export function Sidebar({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // States for inline renaming of menu options & topics
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
+
+  const handleSaveEdit = (id: string, isMenu: boolean) => {
+    if (!editingName.trim()) {
+      setEditingId(null);
+      return;
+    }
+    if (isMenu) {
+      if (onUpdateDb) {
+        const currentLabels = customMenuLabels || {};
+        onUpdateDb({
+          customMenuLabels: {
+            ...currentLabels,
+            [id]: editingName.trim()
+          }
+        });
+      }
+    } else {
+      const updatedTopics = topics.map(t => t.id === id ? { ...t, name: editingName.trim() } : t);
+      if (onUpdateDb) {
+        onUpdateDb({ topics: updatedTopics });
+      }
+    }
+    setEditingId(null);
+  };
 
   // New Topic details form state
   const [topicName, setTopicName] = useState('');
@@ -106,6 +141,127 @@ export function Sidebar({
   };
 
   const currentIconDetails = AVAILABLE_ICONS.find(i => i.name === selectedIcon) || AVAILABLE_ICONS[0];
+
+  // Configured default menu options available inside the sidebar
+  const BASE_MENU_ITEMS = [
+    { id: 'dashboard', label: 'Dashboard', icon: Compass, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'topicshelf', label: 'Topicshelf', icon: Layers, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'pdfs', label: 'PDF Reference Links', icon: FileText, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'videos', label: 'Videos', icon: Video, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'concepts', label: 'Concepts', icon: Lightbulb, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'trackers', label: 'Topic Tracker', icon: ClipboardCheck, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
+    { id: 'assignments', label: 'Assignments', icon: Award, colorClass: 'text-rose-600', activeBg: 'bg-rose-500/10 dark:bg-rose-955/15 text-rose-600 dark:text-rose-400 border-rose-550 dark:border-rose-400', isHot: true },
+    { id: 'quicknotes', label: 'Universal Quick Notes', icon: Sparkles, colorClass: 'text-amber-500', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400' },
+  ];
+
+  const DEFAULT_MENU_ITEMS = BASE_MENU_ITEMS.map(item => ({
+    ...item,
+    label: customMenuLabels?.[item.id] || item.label
+  }));
+
+  // Resolve dynamic reorder of menu options
+  const sidebarLinksList = sidebarOrder && sidebarOrder.length > 0
+    ? [...sidebarOrder]
+    : ['dashboard', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
+
+  const orderedMenuItems = [...sidebarLinksList]
+    .map(id => DEFAULT_MENU_ITEMS.find(item => item.id === id))
+    .filter((meta): meta is typeof DEFAULT_MENU_ITEMS[0] => !!meta);
+
+  DEFAULT_MENU_ITEMS.forEach(m => {
+    if (!orderedMenuItems.some(item => item.id === m.id)) {
+      orderedMenuItems.push(m);
+    }
+  });
+
+  // Drag and drop states for navigation menu list
+  const [draggedMenuId, setDraggedMenuId] = useState<string | null>(null);
+  const [dragOverMenuId, setDragOverMenuId] = useState<string | null>(null);
+
+  const handleDragStartMenu = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/menu-id', id);
+    setDraggedMenuId(id);
+  };
+
+  const handleDragOverMenu = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedMenuId && draggedMenuId !== id) {
+      setDragOverMenuId(id);
+    }
+  };
+
+  const handleDropMenu = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('text/menu-id') || draggedMenuId;
+    if (!draggedId || draggedId === targetId) return;
+
+    const currentOrder = orderedMenuItems.map(item => item.id);
+    const sourceIdx = currentOrder.indexOf(draggedId);
+    const targetIdx = currentOrder.indexOf(targetId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updated = [...currentOrder];
+      const [moved] = updated.splice(sourceIdx, 1);
+      const newTargetIdx = updated.indexOf(targetId);
+      updated.splice(newTargetIdx, 0, moved);
+      if (onUpdateDb) {
+        onUpdateDb({ sidebarOrder: updated });
+      }
+    }
+
+    setDraggedMenuId(null);
+    setDragOverMenuId(null);
+  };
+
+  const handleDragEndMenu = () => {
+    setDraggedMenuId(null);
+    setDragOverMenuId(null);
+  };
+
+  // Drag and drop states for dynamic individual topics
+  const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
+  const [dragOverTopicId, setDragOverTopicId] = useState<string | null>(null);
+
+  const handleDragStartTopic = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/topic-id', id);
+    setDraggedTopicId(id);
+  };
+
+  const handleDragOverTopic = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedTopicId && draggedTopicId !== id) {
+      setDragOverTopicId(id);
+    }
+  };
+
+  const handleDropTopic = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('text/topic-id') || draggedTopicId;
+    if (!draggedId || draggedId === targetId) return;
+
+    const sourceIdx = topics.findIndex(t => t.id === draggedId);
+    const targetIdx = topics.findIndex(t => t.id === targetId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updated = [...topics];
+      const [moved] = updated.splice(sourceIdx, 1);
+      const newTargetIdx = updated.findIndex(t => t.id === targetId);
+      updated.splice(newTargetIdx, 0, moved);
+      if (onUpdateDb) {
+        onUpdateDb({ topics: updated });
+      }
+    }
+
+    setDraggedTopicId(null);
+    setDragOverTopicId(null);
+  };
+
+  const handleDragEndTopic = () => {
+    setDraggedTopicId(null);
+    setDragOverTopicId(null);
+  };
 
   return (
     <>
@@ -154,7 +310,7 @@ export function Sidebar({
 
       {/* Main Left Drawer (Desktop) & Floating Panel (Mobile Drawer overlay) */}
       <div className={`
-        fixed inset-y-0 left-0 w-64 bg-white dark:bg-slate-900/95 border-r border-slate-200 dark:border-slate-800 flex flex-col z-50 transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex
+        fixed inset-y-0 left-0 w-64 bg-white dark:bg-slate-900/95 border-r border-slate-200 dark:border-slate-800 flex flex-col z-50 transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex overflow-x-hidden
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Header brand details */}
@@ -164,22 +320,22 @@ export function Sidebar({
               onSelectView('dashboard');
               setMobileMenuOpen(false);
             }}
-            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity min-w-0"
             title="Go to Home Dashboard"
           >
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 dark:text-blue-450 font-bold shrink-0">
               <Laptop className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="font-bold text-slate-800 dark:text-white text-lg leading-none font-sans tracking-tight">
+            <div className="min-w-0">
+              <h1 className="font-bold text-slate-800 dark:text-white text-lg leading-none font-sans tracking-tight truncate">
                 CodeXshelf
               </h1>
-              <span className="text-[9px] font-mono tracking-wider text-slate-400 block mt-1">YOUR LEARNING VAULT</span>
+              <span className="text-[9px] font-mono tracking-wider text-slate-400 block mt-1 truncate">YOUR LEARNING VAULT</span>
             </div>
           </div>
           <button 
             onClick={() => setMobileMenuOpen(false)}
-            className="md:hidden p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="md:hidden p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5 text-slate-500" />
           </button>
@@ -187,46 +343,46 @@ export function Sidebar({
 
         {/* Sync Status bar details */}
         <div className="px-6 py-2 bg-slate-50 dark:bg-slate-850/50 border-b border-slate-200/85 dark:border-slate-800/50 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {syncStatus === 'saving' && (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                <span className="font-semibold text-blue-600 dark:text-blue-400">Saving...</span>
+                <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+                <span className="font-semibold text-blue-600 dark:text-blue-400 truncate">Saving...</span>
               </>
             )}
             {syncStatus === 'saved' && (
               <>
-                <Cloud className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="font-semibold text-slate-705 dark:text-slate-350">Saved to Cloud</span>
+                <Cloud className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="font-semibold text-slate-705 dark:text-slate-350 truncate">Saved to Cloud</span>
               </>
             )}
             {syncStatus === 'offline' && (
               <>
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <span className="font-semibold text-amber-600 dark:text-amber-500">Offline</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span className="font-semibold text-amber-600 dark:text-amber-500 truncate">Offline</span>
               </>
             )}
             {syncStatus === 'syncing' && (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-indigo-505 animate-spin" />
-                <span className="font-semibold text-indigo-650 dark:text-indigo-400">Syncing...</span>
+                <RefreshCw className="w-3.5 h-3.5 text-indigo-505 animate-spin shrink-0" />
+                <span className="font-semibold text-indigo-650 dark:text-indigo-400 truncate">Syncing...</span>
               </>
             )}
             {syncStatus === 'reconnecting' && (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-amber-505 animate-spin" />
-                <span className="font-semibold text-amber-600 dark:text-amber-450">Reconnecting...</span>
+                <RefreshCw className="w-3.5 h-3.5 text-amber-505 animate-spin shrink-0" />
+                <span className="font-semibold text-amber-600 dark:text-amber-450 truncate">Reconnecting...</span>
               </>
             )}
           </div>
-          <span className="text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold">REALTIME</span>
+          <span className="text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold shrink-0">REALTIME</span>
         </div>
 
         {/* Streak Visual Card */}
-        <div className="px-6 py-3 bg-gradient-to-r from-amber-500/[0.03] to-orange-500/[0.03] dark:from-amber-500/[0.02] dark:to-orange-500/[0.01] border-b border-slate-205/60 dark:border-slate-800/40 text-left">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="relative">
+        <div className="px-6 py-3 bg-gradient-to-r from-amber-500/[0.03] to-orange-500/[0.03] dark:from-amber-500/[0.02] dark:to-orange-500/[0.01] border-b border-slate-205/60 dark:border-slate-800/40 text-left overflow-hidden">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative shrink-0">
                 <div className={`p-1.5 rounded-lg ${completedToday ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-850 text-slate-400 dark:text-slate-500'}`}>
                   <Flame className={`w-5 h-5 ${completedToday ? 'fill-amber-500 animate-pulse text-amber-500' : ''}`} />
                 </div>
@@ -237,11 +393,11 @@ export function Sidebar({
                   </span>
                 )}
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                  <span>{streakCount} Day Study Streak</span>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5 truncate">
+                  <span className="truncate">{streakCount} Day Study Streak</span>
                 </p>
-                <span className="text-[10px] text-slate-400 block mt-0.5 font-sans leading-tight">
+                <span className="text-[10px] text-slate-400 block mt-0.5 font-sans leading-tight truncate">
                   {completedToday ? '✨ Today complete! Great work!' : '⏳ Complete 1 goal to keep the fire!'}
                 </span>
               </div>
@@ -254,122 +410,105 @@ export function Sidebar({
         </div>
 
         {/* Navigation topics */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-7">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 space-y-7">
           <div className="space-y-1.5">
-            <button
-              onClick={() => {
-                onSelectView('dashboard');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'dashboard'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <Compass className="w-4.5 h-4.5" />
-              <span>Dashboard</span>
-            </button>
+            {orderedMenuItems.map((item) => {
+              const MenuItemIcon = item.icon;
+              const isSelected = activeView === item.id;
+              const isOver = dragOverMenuId === item.id;
+              const isDragged = draggedMenuId === item.id;
 
-            <button
-              onClick={() => {
-                onSelectView('topicshelf');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'topicshelf'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <Layers className="w-4.5 h-4.5" />
-              <span>Topicshelf</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectView('pdfs');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'pdfs'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <FileText className="w-4.5 h-4.5" />
-              <span>PDF Reference Links</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectView('videos');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'videos'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <Video className="w-4.5 h-4.5" />
-              <span>Videos</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectView('concepts');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'concepts'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <Lightbulb className="w-4.5 h-4.5" />
-              <span>Concepts</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectView('trackers');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'trackers'
-                  ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500 font-bold' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                }
-              `}
-            >
-              <ClipboardCheck className="w-4.5 h-4.5" />
-              <span>Topic Tracker</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectView('assignments');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3
-                ${activeView === 'assignments'
-                  ? 'bg-rose-500/10 dark:bg-rose-955/15 text-rose-600 dark:text-rose-400 border-rose-550 dark:border-rose-400 font-bold shadow-xs' 
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-rose-605/90'
-                }
-              `}
-            >
-              <Award className={`w-4.5 h-4.5 ${activeView === 'assignments' ? 'text-rose-650' : 'text-slate-450'}`} />
-              <span className="flex items-center justify-between w-full">
-                <span>Assignments</span>
-                <span className="text-[9px] bg-rose-500/15 dark:bg-rose-500/30 text-rose-600 dark:text-rose-450 px-1.5 py-0.5 rounded-full font-bold">HOT</span>
-              </span>
-            </button>
+              return (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(e) => handleDragStartMenu(e, item.id)}
+                  onDragOver={(e) => handleDragOverMenu(e, item.id)}
+                  onDrop={(e) => handleDropMenu(e, item.id)}
+                  onDragEnd={handleDragEndMenu}
+                  onDragLeave={() => setDragOverMenuId(null)}
+                  className={`flex items-center gap-2 rounded-xl group transition-all p-1 min-w-0 ${
+                    isOver ? 'bg-blue-50/50 dark:bg-blue-950/10 border border-dashed border-blue-500 scale-[1.02]' : 'border border-transparent'
+                  } ${isDragged ? 'opacity-30' : ''}`}
+                >
+                  <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-1 rounded-sm shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3.5 h-3.5" />
+                  </div>
+                  <div
+                    onClick={() => {
+                      if (editingId !== item.id) {
+                        onSelectView(item.id);
+                        setMobileMenuOpen(false);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (editingId !== item.id) {
+                          onSelectView(item.id);
+                          setMobileMenuOpen(false);
+                        }
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 text-left border-r-3 select-none min-w-0 cursor-pointer ${
+                      isSelected
+                        ? item.activeBg
+                        : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <div 
+                      className="flex items-center gap-3 truncate min-w-0 flex-1"
+                      onClick={(e) => editingId === item.id && e.stopPropagation()}
+                    >
+                      <MenuItemIcon className="w-4.5 h-4.5 shrink-0" />
+                      {editingId === item.id ? (
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSaveEdit(item.id, true);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingId(null);
+                            }
+                          }}
+                          onBlur={() => handleSaveEdit(item.id, true)}
+                          autoFocus
+                          className="bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border border-blue-500 rounded px-1.5 py-0.5 text-xs w-full focus:outline-none"
+                        />
+                      ) : (
+                        <span className="truncate">{item.label}</span>
+                      )}
+                    </div>
+                    {item.isHot && editingId !== item.id && (
+                      <span className="text-[9px] bg-rose-500/15 dark:bg-rose-500/30 text-rose-600 dark:text-rose-450 px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-1">HOT</span>
+                    )}
+                    {editingId !== item.id && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingId(item.id);
+                          setEditingName(item.label);
+                        }}
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 ml-1 shrink-0 cursor-pointer"
+                        title="Edit name"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="space-y-3">
@@ -379,7 +518,7 @@ export function Sidebar({
                   onSelectView('topicshelf');
                   setMobileMenuOpen(false);
                 }}
-                className={`text-[11px] font-bold font-mono tracking-wider uppercase transition-all duration-150 text-left hover:text-blue-500 cursor-pointer
+                className={`text-[11px] font-bold font-mono tracking-wider uppercase transition-all duration-150 text-left hover:text-blue-500 cursor-pointer min-w-0 truncate
                   ${activeView === 'topicshelf'
                     ? 'text-blue-600 dark:text-blue-400 font-extrabold scale-102'
                     : 'text-slate-400 dark:text-slate-500'
@@ -391,7 +530,7 @@ export function Sidebar({
               </button>
               <button 
                 onClick={() => setModalOpen(true)}
-                className="p-1 rounded hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                className="p-1 rounded hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0"
                 title="Create a topic"
               >
                 <Plus className="w-4 h-4" />
@@ -404,36 +543,105 @@ export function Sidebar({
                 const item = AVAILABLE_ICONS.find(i => i.name === topic.icon) || AVAILABLE_ICONS[0];
                 const TopicIcon = item.icon;
                 const isSelected = activeView === topic.id;
+                const isOver = dragOverTopicId === topic.id;
+                const isDragged = draggedTopicId === topic.id;
 
                 return (
-                  <button
+                  <div
                     key={topic.id}
-                    onClick={() => {
-                      onSelectView(topic.id);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 text-left group border-r-3
-                      ${isSelected
-                        ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 font-semibold border-blue-600 dark:border-blue-500'
-                        : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
-                      }
-                    `}
+                    draggable
+                    onDragStart={(e) => handleDragStartTopic(e, topic.id)}
+                    onDragOver={(e) => handleDragOverTopic(e, topic.id)}
+                    onDrop={(e) => handleDropTopic(e, topic.id)}
+                    onDragEnd={handleDragEndTopic}
+                    onDragLeave={() => setDragOverTopicId(null)}
+                    className={`flex items-center gap-1.5 rounded-xl group transition-all p-0.5 min-w-0 ${
+                      isOver ? 'bg-blue-50/50 dark:bg-blue-950/15 border border-dashed border-blue-500 scale-[1.02]' : 'border border-transparent'
+                    } ${isDragged ? 'opacity-30' : ''}`}
                   >
-                    <div className="flex items-center gap-3 truncate">
-                      <div 
-                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors shadow-2xs"
-                        style={{ backgroundColor: `${topic.color}15`, color: topic.color }}
-                      >
-                        <TopicIcon className="w-4.5 h-4.5" />
-                      </div>
-                      <span className="truncate">{topic.name}</span>
+                    <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-0.5 rounded-sm shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <GripVertical className="w-3.5 h-3.5" />
                     </div>
-                  </button>
+                    <div
+                      onClick={() => {
+                        if (editingId !== topic.id) {
+                          onSelectView(topic.id);
+                          setMobileMenuOpen(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (editingId !== topic.id) {
+                            onSelectView(topic.id);
+                            setMobileMenuOpen(false);
+                          }
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 text-left border-r-3 select-none min-w-0 cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 font-semibold border-blue-600 dark:border-blue-500'
+                          : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <div 
+                        className="flex items-center gap-3 truncate min-w-0 flex-1"
+                        onClick={(e) => editingId === topic.id && e.stopPropagation()}
+                      >
+                        <div 
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors shadow-2xs shrink-0"
+                          style={{ backgroundColor: `${topic.color}15`, color: topic.color }}
+                        >
+                          <TopicIcon className="w-4.5 h-4.5" />
+                        </div>
+                        {editingId === topic.id ? (
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSaveEdit(topic.id, false);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setEditingId(null);
+                              }
+                            }}
+                            onBlur={() => handleSaveEdit(topic.id, false)}
+                            autoFocus
+                            className="bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border border-blue-500 rounded px-1.5 py-0.5 text-xs w-full focus:outline-none"
+                          />
+                        ) : (
+                          <span className="truncate">{topic.name}</span>
+                        )}
+                      </div>
+                      {editingId !== topic.id && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditingId(topic.id);
+                            setEditingName(topic.name);
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 ml-1 shrink-0 cursor-pointer"
+                          title="Edit topic name"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
 
               {topics.length === 0 && (
-                <p className="text-xs text-gray-400 px-3 py-2 italic font-sans">
+                <p className="text-xs text-slate-400 px-3 py-2 italic font-sans truncate">
                   No topics added yet.
                 </p>
               )}

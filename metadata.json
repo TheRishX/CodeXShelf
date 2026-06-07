@@ -1,6 +1,6 @@
 {
   "name": "CodeXshelf",
   "description": "Online digital vault for tracking study topics, learning roadmaps, notes, resource files, and interactive code quizzes with real-time sync support.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

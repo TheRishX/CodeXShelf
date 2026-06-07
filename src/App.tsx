@@ -15,6 +15,7 @@ import { AllPdfsView } from './components/AllPdfsView';
 import { KnowledgeVaultView } from './components/KnowledgeVaultView';
 import { AllAssignmentsView } from './components/AllAssignmentsView';
 import { AllTopicshelfView } from './components/AllTopicshelfView';
+import { QuickNotesView } from './components/QuickNotesView';
 import { Topic, Subtopic, DatabaseState, CustomUser } from './types';
 import { initialData } from './initialData';
 import { auth, db } from './firebase';
@@ -497,6 +498,15 @@ export default function App() {
       );
     }
 
+    if (activeView === 'quicknotes') {
+      return (
+        <QuickNotesView
+          dbState={dbState}
+          onUpdateDb={handleUpdateDatabase}
+        />
+      );
+    }
+
     if (activeView === 'concepts') {
       return (
         <AllConceptsView
@@ -613,6 +623,7 @@ export default function App() {
           onOpenSubtopic={handleOpenSubtopic}
           onAddTopic={handleAddTopic}
           onDeleteTopic={handleDeleteTopic}
+          onUpdateDb={handleUpdateDatabase}
         />
       );
     }
@@ -687,55 +698,83 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
         syncStatus={syncStatus}
         streak={dbState.streak}
+        sidebarOrder={dbState.sidebarOrder}
+        onUpdateDb={handleUpdateDatabase}
+        customMenuLabels={dbState.customMenuLabels}
       />
 
-      {/* 2. Main study content canvas scroll board */}
-      <main className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-8 md:py-12 relative">
-        {/* Floating Top Right Knowledge Vault Trigger */}
-        <div className="absolute top-4 right-4 md:top-6 md:right-8 z-30 flex items-center gap-3">
-          {/* Daily Streak Indicator */}
-          {dbState.streak && dbState.streak.count > 0 && (
-            <div 
-              onClick={() => setActiveView('dashboard')}
-              className="px-3.5 py-2.5 rounded-xl text-xs font-black font-mono tracking-wider uppercase border bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border-amber-500/20 text-amber-600 dark:text-amber-450 flex items-center gap-2 cursor-pointer shadow-3xs"
-              title="Your Daily Study Streak!"
+      {/* 2. Main study content canvas scroll board - flex container with sticky child bar */}
+      <main className="flex-1 overflow-y-auto relative flex flex-col">
+        {/* Elegant Sticky Top Navigation Bar with generous item groupings preventing overlaps */}
+        <div className="sticky top-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/40 z-30 px-4 sm:px-8 lg:px-12 py-3 md:py-4 flex items-center justify-between transition-colors shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Context location indicator for fluid mental clarity */}
+            <span className="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">
+              {activeView === 'dashboard' ? 'Overview' : 
+               activeView === 'todo' ? 'Cognitive Tasks' : 
+               activeView === 'vault' ? 'Digital Curator' : 
+               activeView === 'quicknotes' ? 'Neural Intake' :
+               activeView === 'concepts' ? 'Framework Concepts' :
+               activeView === 'trackers' ? 'Study Tracker' :
+               activeView === 'videos' ? 'Video Reference Lectures' :
+               activeView === 'notes' ? 'Topic Scratchpads' :
+               activeView === 'coding' ? 'Sandbox Labs' :
+               activeView === 'interviews' ? 'Simulations' :
+               activeView === 'quizzes' ? 'Assessment Arena' :
+               activeView === 'pdfs' ? 'Reference Documents' :
+               activeView === 'assignments' ? 'Laboratory Assignments' :
+               activeView.includes('::') ? 'Subtopic Lab' : 'Topic Overview'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Daily Streak Indicator */}
+            {dbState.streak && dbState.streak.count > 0 && (
+              <div 
+                onClick={() => setActiveView('dashboard')}
+                className="px-3 py-1.5 rounded-xl text-xs font-black font-mono tracking-wider uppercase border bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border-amber-500/20 text-amber-600 dark:text-amber-450 flex items-center gap-2 cursor-pointer shadow-3xs hover:bg-amber-500/10 transition-colors"
+                title="Your Daily Study Streak!"
+              >
+                <Flame className="w-4 h-4 shrink-0 text-amber-550 fill-amber-500 animate-pulse" />
+                <span>{dbState.streak.count} DAYS</span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setActiveView(activeView === 'todo' ? 'dashboard' : 'todo')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-1.5 border shadow-xs select-none cursor-pointer ${
+                activeView === 'todo'
+                  ? 'bg-amber-500 hover:bg-amber-400 border-transparent text-white'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
+              }`}
+              title={activeView === 'todo' ? "Back to Dashboard" : "Open Psychological To-Do"}
+              id="todo-list-trigger"
             >
-              <Flame className="w-4 h-4 shrink-0 text-amber-550 fill-amber-500 animate-pulse" />
-              <span>{dbState.streak.count} DAY KEY</span>
-            </div>
-          )}
+              <ClipboardList className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'todo' ? 'text-white' : 'text-amber-500 dark:text-amber-450'}`} />
+              <span>To-Do</span>
+            </button>
 
-          <button
-            onClick={() => setActiveView(activeView === 'todo' ? 'dashboard' : 'todo')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-2 border shadow-xs select-none cursor-pointer ${
-              activeView === 'todo'
-                ? 'bg-amber-500 hover:bg-amber-400 border-transparent text-white'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
-            }`}
-            title={activeView === 'todo' ? "Back to Dashboard" : "Open Psychological To-Do"}
-            id="todo-list-trigger"
-          >
-            <ClipboardList className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'todo' ? 'text-white' : 'text-amber-500 dark:text-amber-450'}`} />
-            <span>To-Do</span>
-          </button>
-
-          <button
-            onClick={() => setActiveView(activeView === 'vault' ? 'dashboard' : 'vault')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-2 border shadow-xs select-none cursor-pointer ${
-              activeView === 'vault'
-                ? 'bg-blue-600 hover:bg-blue-500 border-transparent text-white'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
-            }`}
-            title={activeView === 'vault' ? "Back to Dashboard" : "Open Knowledge Vault"}
-            id="knowledge-vault-trigger"
-          >
-            <BookOpen className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'vault' ? 'text-white' : 'text-blue-500 dark:text-blue-400'}`} />
-            <span className="hidden sm:inline">Knowledge Vault</span>
-          </button>
+            <button
+              onClick={() => setActiveView(activeView === 'vault' ? 'dashboard' : 'vault')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all duration-150 flex items-center gap-1.5 border shadow-xs select-none cursor-pointer ${
+                activeView === 'vault'
+                  ? 'bg-blue-600 hover:bg-blue-500 border-transparent text-white'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-700 dark:hover:text-white'
+              }`}
+              title={activeView === 'vault' ? "Back to Dashboard" : "Open Knowledge Vault"}
+              id="knowledge-vault-trigger"
+            >
+              <BookOpen className={`w-4 h-4 shrink-0 transition-colors ${activeView === 'vault' ? 'text-white' : 'text-blue-550 dark:text-blue-400'}`} />
+              <span className="hidden sm:inline">Knowledge Vault</span>
+            </button>
+          </div>
         </div>
 
-        <div className="max-w-5xl mx-auto">
-          {renderWorkspace()}
+        {/* Content body container - keeps pristine, isolated vertical gap to avoid overlay */}
+        <div className="flex-1 px-4 sm:px-8 lg:px-12 py-6 md:py-8">
+          <div className="max-w-5xl mx-auto">
+            {renderWorkspace()}
+          </div>
         </div>
       </main>
 

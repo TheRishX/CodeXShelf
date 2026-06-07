@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Award, Sparkles, Plus, Search, Trash2, ExternalLink, FileText, Globe, 
   Calendar, Flame, CheckCircle2, TrendingUp, X, Check, Edit3, HelpCircle,
-  FileCode, Zap, BrainCircuit, Trophy, Star, LayoutGrid, List, Menu
+  FileCode, Zap, BrainCircuit, Trophy, Star, LayoutGrid, List, Menu,
+  Pin, GripVertical
 } from 'lucide-react';
 import { DatabaseState, AssignmentItem } from '../types';
 
@@ -17,6 +18,83 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('grid');
+
+  // Drag and drop states for manual layout ordering
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    setDraggedId(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggedId !== id) {
+      setDragOverId(id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDragOverId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+
+    const sourceIdx = assignments.findIndex(a => a.id === draggedId);
+    const targetIdx = assignments.findIndex(a => a.id === targetId);
+
+    if (sourceIdx !== -1 && targetIdx !== -1) {
+      const updated = [...assignments];
+      const [movedItem] = updated.splice(sourceIdx, 1);
+      const newTargetIdx = updated.findIndex(a => a.id === targetId);
+      updated.splice(newTargetIdx, 0, movedItem);
+      onUpdateDb({ assignments: updated });
+    }
+
+    setDraggedId(null);
+    setDragOverId(null);
+  };
+
+  // Toggle Pinned status
+  const handleTogglePin = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = assignments.map(a => {
+      if (a.id === id) {
+        return { ...a, isPinned: !a.isPinned };
+      }
+      return a;
+    });
+    onUpdateDb({ assignments: updated });
+  };
+
+  // Set selected item as exclusive solving card (at any time only one is solving)
+  const handleToggleSolving = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = assignments.map(a => {
+      if (a.id === id) {
+        const nextSolving = !a.isSolving;
+        return { 
+          ...a, 
+          isSolving: nextSolving,
+          status: nextSolving ? 'In Progress' as const : a.status
+        };
+      }
+      return { 
+        ...a, 
+        isSolving: false 
+      };
+    });
+    onUpdateDb({ assignments: updated });
+  };
   
   // Creation modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -131,6 +209,19 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                         (item.notes || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = filterStatus === 'all' || item.status === filterStatus;
     return matchSearch && matchStatus;
+  });
+
+  // Sort assignments: Active Solving comes absolutely first, Pinned second, and standard manual inventory sequence third
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    if (a.isSolving && !b.isSolving) return -1;
+    if (!a.isSolving && b.isSolving) return 1;
+
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+
+    const idxA = assignments.findIndex(item => item.id === a.id);
+    const idxB = assignments.findIndex(item => item.id === b.id);
+    return idxA - idxB;
   });
 
   return (
@@ -320,58 +411,99 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
             ? "flex flex-col gap-6"
             : "flex flex-col gap-3"
       }>
-        {filtered.map((item) => {
-          let badgeColor = "bg-amber-500/10 text-amber-600 border-amber-500/20";
+        {sortedFiltered.map((item) => {
+          const isSolving = !!item.isSolving;
+          const isPinned = !!item.isPinned;
+
+          let badgeColor = "bg-amber-500/10 text-amber-600 border-amber-500/20 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20";
           let borderThick = "border-amber-400 dark:border-amber-500/40";
           let psyNote = "Cognitive block exists. Double click resources to build your scaffolding.";
 
-          if (item.status === 'In Progress') {
-            badgeColor = "bg-rose-500/10 text-rose-600 border-rose-500/20";
+          if (isSolving) {
+            badgeColor = "bg-cyan-500/20 text-cyan-600 border-cyan-500/30 dark:bg-cyan-400/25 dark:text-cyan-400 dark:border-cyan-400/30";
+            borderThick = "border-cyan-450 dark:border-cyan-400";
+            psyNote = "Retrieval matrix online! Your neuronal structures are actively adapting right now.";
+          } else if (item.status === 'In Progress') {
+            badgeColor = "bg-rose-500/10 text-rose-600 border-rose-500/20 dark:bg-rose-455/15 dark:text-rose-400 dark:border-rose-455/20";
             borderThick = "border-rose-500 dark:border-rose-550/40";
             psyNote = "Synapses are forming. Dynamic engagement leads to accelerated deep retention.";
           } else if (item.status === 'Completed') {
-            badgeColor = "bg-blue-500/10 text-blue-600 border-blue-500/20";
+            badgeColor = "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:bg-blue-450/15 dark:text-blue-400 dark:border-blue-450/20";
             borderThick = "border-blue-500 dark:border-blue-550/40";
             psyNote = "Encoding successfully consolidated. Practice active recall in 48 hours for intervals integration.";
           } else if (item.status === 'Perfected') {
-            badgeColor = "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
-            borderThick = "border-emerald-500 dark:border-emerald-550/40";
+            badgeColor = "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:bg-emerald-450/15 dark:text-emerald-450 dark:border-emerald-450/20";
+            borderThick = "border-emerald-500 dark:border-emerald-555/40";
             psyNote = "Synaptic mastery unlocked! Perfect schema constructed. You can confidently explain this to a peer.";
           }
 
           // Compact View layout
           if (viewMode === 'compact') {
+            const cardBg = isSolving 
+              ? "bg-gradient-to-r from-teal-50/70 via-cyan-50/60 to-blue-50/50 dark:from-teal-950/20 dark:via-cyan-950/25 dark:to-blue-950/20 border-cyan-300 dark:border-cyan-800 shadow-[0_4px_20px_rgba(6,182,212,0.08)] ring-2 ring-cyan-400/20"
+              : "bg-white dark:bg-slate-900 border-slate-200/70 dark:border-slate-800/60";
+
             return (
               <div 
                 key={item.id}
-                className={`bg-white dark:bg-slate-900 border-l-4 ${borderThick} rounded-xl border border-slate-200/70 dark:border-slate-800/60 py-2.5 px-4 shadow-2xs relative flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all duration-150 hover:bg-slate-50/50 dark:hover:bg-slate-850/20 group`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, item.id)}
+                onDragEnd={handleDragEnd}
+                className={`${cardBg} border-l-4 ${borderThick} rounded-xl border py-2.5 px-4 relative flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all duration-200 select-none ${
+                  dragOverId === item.id ? 'translate-y-1 scale-[1.01] border-dashed border-sky-400 dark:border-sky-500 bg-sky-50/20 dark:bg-sky-950/20' : ''
+                } ${draggedId === item.id ? 'opacity-30' : ''}`}
               >
-                {/* Left side: Status badge + Title */}
+                {/* Left side: Drag Handle, Status, Title, Pin */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-extrabold font-mono tracking-wide uppercase border shrink-0 ${badgeColor}`}>
-                    {item.status === 'Awaiting Solution' ? 'Queue' : item.status === 'In Progress' ? 'solving' : item.status === 'Completed' ? 'solved' : 'Mastered'}
+                  <div className="shrink-0 p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-grab active:cursor-grabbing" title="Drag to reorder manually">
+                    <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                  </div>
+
+                  <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold font-mono tracking-wide uppercase border shrink-0 ${badgeColor}`}>
+                    {isSolving ? 'Solving Now' : item.status === 'Awaiting Solution' ? 'Queue' : item.status === 'In Progress' ? 'solving' : item.status === 'Completed' ? 'solved' : 'Mastered'}
                   </span>
-                  <h3 className="text-xs font-bold font-sans text-slate-800 dark:text-slate-100 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight truncate">
+                  
+                  <h3 className="text-xs font-bold font-sans text-slate-800 dark:text-slate-100 hover:text-cyan-600 dark:hover:text-cyan-450 transition-colors tracking-tight truncate flex items-center gap-1.5">
                     {item.title}
+                    {isPinned && <span className="text-amber-500 font-bold text-[10px]">📌</span>}
                   </h3>
-                  {item.notes && (
-                    <span className="text-[10px] text-amber-500 dark:text-amber-450 hidden lg:inline shrink-0 font-sans font-medium" title={item.notes}>
-                      💡 Notes
-                    </span>
-                  )}
                 </div>
 
-                {/* Right side: Links, micro synapser selector, actions */}
-                <div className="flex flex-wrap items-center gap-4 shrink-0 justify-between md:justify-end">
+                {/* Right side: Interactive Controls */}
+                <div className="flex flex-wrap items-center gap-3 shrink-0 justify-between md:justify-end">
+                  {/* Pin option */}
+                  <button
+                    onClick={(e) => handleTogglePin(item.id, e)}
+                    className={`p-1 rounded transition-transform cursor-pointer ${isPinned ? 'text-amber-500 scale-110' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:scale-105'}`}
+                    title={isPinned ? "Unpin paper" : "Pin paper to top"}
+                  >
+                    <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current rotate-45' : ''}`} />
+                  </button>
+
+                  {/* Playful Solve Indicator */}
+                  <button
+                    onClick={(e) => handleToggleSolving(item.id, e)}
+                    className={`px-2.5 py-1 text-[9px] rounded-lg font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                      isSolving
+                        ? 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-xs animate-pulse'
+                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {isSolving ? '✨ Solving' : '📖 Solve'}
+                  </button>
+
                   {/* Tiny links */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     {item.paperUrl && (
                       <a
                         href={item.paperUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="p-1.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 rounded-md text-rose-600 dark:text-rose-400 transition"
-                        title="View reference paper PDF"
+                        title="View PDF paper reference"
                       >
                         <FileText className="w-3.5 h-3.5" />
                       </a>
@@ -389,7 +521,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     )}
                   </div>
 
-                  {/* Micro synapser controller */}
+                  {/* Stage Synapser Controller */}
                   <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-850/50">
                     {([
                       { id: 'Awaiting Solution', label: 'Q' },
@@ -397,13 +529,13 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                       { id: 'Completed', label: 'C' },
                       { id: 'Perfected', label: 'M' }
                     ] as const).map((stage) => {
-                      const isSelected = item.status === stage.id;
+                      const isSelected = item.status === stage.id && !isSolving;
                       let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
                       if (isSelected) {
-                        if (stage.id === 'In Progress') activeBtnClass = "bg-rose-650 text-white shadow-2xs";
-                        else if (stage.id === 'Completed') activeBtnClass = "bg-blue-650 text-white shadow-2xs";
-                        else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-650 text-white shadow-2xs";
-                        else activeBtnClass = "bg-amber-650 text-white shadow-2xs";
+                        if (stage.id === 'In Progress') activeBtnClass = "bg-rose-500 text-white shadow-2xs";
+                        else if (stage.id === 'Completed') activeBtnClass = "bg-blue-500 text-white shadow-2xs";
+                        else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-500 text-white shadow-2xs";
+                        else activeBtnClass = "bg-amber-550 text-white shadow-2xs";
                       }
                       return (
                         <button
@@ -413,7 +545,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           className={`w-5 h-5 text-[8px] rounded-md font-extrabold font-mono transition-all duration-150 cursor-pointer ${
                             isSelected ? activeBtnClass : 'text-slate-450 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-350'
                           }`}
-                          title={`Switch to ${stage.id}`}
+                          title={`Switch status to ${stage.id}`}
                         >
                           {stage.label}
                         </button>
@@ -422,17 +554,17 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-0.5 border-l border-slate-200 dark:border-slate-800 pl-2">
+                  <div className="flex items-center gap-0.5 border-l border-slate-200 dark:border-slate-800 pl-1.5">
                     <button
                       onClick={() => setEditingItem(item)}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-705 dark:hover:text-white transition cursor-pointer"
+                      className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition cursor-pointer"
                       title="Edit Quest"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-650 transition cursor-pointer"
+                      className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-600 transition cursor-pointer"
                       title="Retire Quest"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -446,42 +578,90 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
           // List View layout (Single stretch column)
           if (viewMode === 'list') {
+            const cardBg = isSolving 
+              ? "bg-gradient-to-r from-teal-50/50 via-cyan-50/40 to-indigo-50/30 dark:from-teal-950/15 dark:via-cyan-950/15 dark:to-indigo-950/10 border-cyan-455 dark:border-cyan-500 ring-3 ring-cyan-250/20 shadow-md"
+              : "bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80";
+
             return (
               <div 
                 key={item.id}
-                className={`bg-white dark:bg-slate-900 border-l-4 ${borderThick} rounded-2xl border-t border-r border-b border-slate-200/80 dark:border-slate-800/80 p-5 shadow-xs relative flex flex-col md:flex-row md:items-start justify-between gap-5 transition-all duration-200 hover:shadow-md group hover:translate-y-[-2px]`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, item.id)}
+                onDragEnd={handleDragEnd}
+                className={`${cardBg} border-l-4 ${borderThick} rounded-2xl border-t border-r border-b p-5 relative flex flex-col md:flex-row md:items-start justify-between gap-5 transition-all duration-200 select-none ${
+                  dragOverId === item.id ? 'translate-y-1 scale-[1.01] border-dashed border-sky-400 bg-sky-50/20 dark:bg-sky-955/20' : ''
+                } ${draggedId === item.id ? 'opacity-30' : ''}`}
               >
-                {/* Left Column: context */}
-                <div className="flex-1 space-y-3">
+                {/* Drag Watercolor Background spreads inside active solving card */}
+                {isSolving && (
+                  <div className="absolute inset-0 bg-gradient-to-tr from-pink-300/10 via-purple-300/5 to-cyan-300/10 pointer-events-none rounded-2xl blur-xs" />
+                )}
+
+                {/* Left Column: Context, Drag Handle, title, stats */}
+                <div className="flex-1 space-y-3 relative z-10">
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono tracking-wider uppercase border ${badgeColor}`}>
-                      {item.status}
+                    {/* Drag Handle */}
+                    <div className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-grab active:cursor-grabbing" title="Drag to reorder manual ranking">
+                      <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600 inline-block" />
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono tracking-wider uppercase border flex items-center gap-1 ${badgeColor}`}>
+                      {isSolving && <Flame className="w-3 h-3 text-cyan-500 animate-pulse" />}
+                      {isSolving ? 'CURRENT FOCUS SOLVING' : item.status}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400">Created: {new Date(item.createdAt || '').toLocaleDateString()}</span>
+
+                    {isPinned && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] bg-amber-500/10 text-amber-600 border border-amber-500/20 font-bold font-mono">
+                        📌 PINNED
+                      </span>
+                    )}
+
+                    <span className="text-[10px] font-mono text-slate-400 font-bold">Created: {new Date(item.createdAt || '').toLocaleDateString()}</span>
                   </div>
 
-                  <h3 className="text-lg font-extrabold font-sans text-slate-800 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight">
+                  <h3 className="text-lg font-extrabold font-sans text-slate-800 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors tracking-tight flex items-center gap-2">
                     {item.title}
                   </h3>
 
                   {item.description && (
-                    <p className="text-xs text-slate-505 dark:text-slate-400 leading-relaxed bg-slate-50/50 dark:bg-slate-950 p-3 rounded-xl border border-slate-100 dark:border-slate-850/50">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-50/50 dark:bg-slate-950 p-3 rounded-xl border border-slate-100 dark:border-slate-850/50">
                       {item.description}
                     </p>
                   )}
 
                   {item.notes && (
-                    <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-950/10 text-slate-650 dark:text-slate-350 px-3 py-2.5 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-semibold">
+                    <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-955/10 text-slate-600 dark:text-slate-300 px-3 py-2.5 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-semibold">
                       💡 {item.notes}
                     </p>
                   )}
+
+                  {/* Motivational neurological micro note */}
+                  <p className="text-[10px] font-mono text-slate-400 dark:text-slate-550 italic font-medium pt-1">
+                    {psyNote}
+                  </p>
                 </div>
 
-                {/* Right Column: resources and actions */}
-                <div className="w-full md:w-80 shrink-0 space-y-4">
+                {/* Right Column: resources, Pin icon & Solving states */}
+                <div className="w-full md:w-80 shrink-0 space-y-4 relative z-10">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono tracking-wider text-slate-400 uppercase font-bold">Resources & Stage</span>
-                    <div className="flex items-center gap-0.5">
+                    <span className="text-[10px] font-mono tracking-wider text-slate-400 uppercase font-bold">Quest Integration</span>
+                    <div className="flex items-center gap-1">
+                      {/* Toggle Pin */}
+                      <button
+                        onClick={(e) => handleTogglePin(item.id, e)}
+                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                          isPinned 
+                            ? 'text-amber-500 hover:text-amber-600 scale-110 drop-shadow-xs' 
+                            : 'text-slate-400 dark:text-slate-550 hover:text-slate-700 dark:hover:text-white'
+                        }`}
+                        title={isPinned ? "Unpin paper" : "Pin paper to top"}
+                      >
+                        <Pin className={`w-4 h-4 ${isPinned ? 'fill-current rotate-45' : ''}`} />
+                      </button>
+
                       <button
                         onClick={() => setEditingItem(item)}
                         className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-450 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
@@ -491,13 +671,35 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                       </button>
                       <button
                         onClick={() => handleDeleteItem(item.id)}
-                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-650 transition-all cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
                         title="Retire Quest"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
+
+                  {/* Large Exclusive Solving Button */}
+                  <button
+                    onClick={(e) => handleToggleSolving(item.id, e)}
+                    className={`w-full py-2.5 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                      isSolving
+                        ? 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-md shadow-cyan-500/10 animate-pulse'
+                        : 'bg-slate-100 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-755 text-slate-700 dark:text-slate-3 w-full border border-slate-205 dark:border-slate-700'
+                    }`}
+                  >
+                    {isSolving ? (
+                      <>
+                        <Flame className="w-4 h-4 text-white animate-bounce" />
+                        <span>ACTIVE COMPREHENSION BLOCK IN FOCUS</span>
+                      </>
+                    ) : (
+                      <>
+                        <BrainCircuit className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>FOCUS SOLVE THIS PAPER MODE</span>
+                      </>
+                    )}
+                  </button>
 
                   {/* Links Row */}
                   {(item.paperUrl || item.websiteUrl) && (
@@ -507,7 +709,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           href={item.paperUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center justify-between transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                          className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center justify-between transition-all duration-150 shadow-xs hover:scale-[1.01]"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <FileText className="w-4 h-4 text-rose-600 shrink-0" />
@@ -522,7 +724,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           href={item.websiteUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center justify-between transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                          className="p-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center justify-between transition-all duration-150 shadow-xs hover:scale-[1.01]"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <Globe className="w-4 h-4 text-emerald-650 shrink-0" />
@@ -536,7 +738,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
                   {/* Stage Switcher */}
                   <div className="p-1.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200/60 dark:border-slate-850/50">
-                    <span className="block text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">Synaptic Stage:</span>
+                    <span className="block text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">Advance Synaptic Stage:</span>
                     <div className="grid grid-cols-4 gap-1">
                       {([
                         { id: 'Awaiting Solution', label: 'Queue' },
@@ -544,7 +746,7 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                         { id: 'Completed', label: 'solved' },
                         { id: 'Perfected', label: 'Mastered' }
                       ] as const).map((stage) => {
-                        const isSelected = item.status === stage.id;
+                        const isSelected = item.status === stage.id && !isSolving;
                         let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
                         if (isSelected) {
                           if (stage.id === 'In Progress') activeBtnClass = "bg-rose-600 text-white shadow-xs";
@@ -573,43 +775,90 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
             );
           }
 
-          // Default Grid View layout
+          // Default Grid View Layout with highly aesthetic, playful watercolor neon highlights
+          const cardBgClass = isSolving 
+            ? "border-cyan-400 dark:border-cyan-400 ring-4 ring-cyan-400/25 dark:ring-cyan-950 shadow-[0_4px_30px_rgba(6,182,212,0.18)] bg-gradient-to-tr from-rose-50/50 via-teal-50/30 to-sky-100/50 dark:from-rose-950/10 dark:via-cyan-950/15 dark:to-teal-950/10" 
+            : "bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-sm";
+
           return (
             <div 
               key={item.id}
-              className={`bg-white dark:bg-slate-900 border-l-4 ${borderThick} rounded-2xl border-t border-r border-b border-slate-200/80 dark:border-slate-800/80 p-5 shadow-xs relative flex flex-col justify-between transition-all duration-200 hover:shadow-md group hover:translate-y-[-2px]`}
+              draggable
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              onDragOver={(e) => handleDragOver(e, item.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, item.id)}
+              onDragEnd={handleDragEnd}
+              className={`border rounded-2xl p-5 relative flex flex-col justify-between transition-all duration-250 select-none hover:shadow-md ${cardBgClass} ${
+                dragOverId === item.id ? 'translate-y-1 scale-[1.01] border-dashed border-sky-400 bg-sky-50/20 dark:bg-sky-955/20' : ''
+              } ${draggedId === item.id ? 'opacity-30' : ''}`}
             >
+              {/* Playful watercolor blend blobs inside active solving card */}
+              {isSolving && (
+                <>
+                  <div className="absolute -right-4 -top-4 w-32 h-32 bg-gradient-to-r from-cyan-400/30 dark:from-cyan-300/20 via-pink-400/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+                  <div className="absolute -left-6 -bottom-6 w-24 h-24 bg-gradient-to-r from-indigo-400/20 dark:from-indigo-300/10 via-purple-300/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                </>
+              )}
+
               {/* Header inside card */}
-              <div>
+              <div className="relative z-10">
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono tracking-wider uppercase border ${badgeColor}`}>
-                    {item.status}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {/* Reorder drag node handle */}
+                    <div className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-grab active:cursor-grabbing" title="Drag and Drop to change order">
+                      <GripVertical className="w-4 h-4 text-slate-350 dark:text-slate-600" />
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono tracking-wider uppercase border flex items-center gap-1 ${badgeColor}`}>
+                      {isSolving && <Sparkles className="w-3 h-3 text-cyan-600 animate-spin" />}
+                      {isSolving ? 'Solving Mode' : item.status}
+                    </span>
+
+                    {isPinned && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] bg-amber-500/10 text-amber-600 border border-amber-500/20 font-bold font-mono">
+                        Pinned 📌
+                      </span>
+                    )}
+                  </div>
                   
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 bg-white/50 dark:bg-slate-900/55 backdrop-blur-xs p-0.5 rounded-lg">
+                    {/* Toggle Pin button */}
+                    <button
+                      onClick={(e) => handleTogglePin(item.id, e)}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        isPinned 
+                          ? 'text-amber-500 hover:text-amber-600 scale-110 drop-shadow-xs' 
+                          : 'text-slate-400 dark:text-slate-550 hover:text-slate-700 dark:hover:text-white'
+                      }`}
+                      title={isPinned ? "Unpin paper" : "Pin paper to top"}
+                    >
+                      <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current rotate-45' : ''}`} />
+                    </button>
+
                     <button
                       onClick={() => setEditingItem(item)}
                       className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
                       title="Edit Quest Details"
                     >
-                      <Edit3 className="w-4 h-4" />
+                      <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-955/25 text-slate-400 hover:text-rose-650 transition-all cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-955/25 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
                       title="Retire Quest"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
-                <h3 className="text-base font-extrabold font-sans text-slate-800 dark:text-white group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors tracking-tight">
+                <h3 className="text-base font-extrabold font-sans text-slate-800 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors tracking-tight leading-snug">
                   {item.title}
                 </h3>
                 
                 {item.description && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-2 p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-850/50">
+                  <p className="text-xs text-slate-505 dark:text-slate-400 leading-relaxed mt-2 p-3 bg-slate-50/70 dark:bg-slate-950/70 rounded-xl border border-slate-100/70 dark:border-slate-850/50">
                     {item.description}
                   </p>
                 )}
@@ -617,23 +866,23 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
                 {/* Conditional Double Core Resources Link Section */}
                 {(item.paperUrl || item.websiteUrl) && (
-                  <div className={`grid gap-3 my-4 ${item.paperUrl && item.websiteUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  <div className={`grid gap-3 my-3.5 ${item.paperUrl && item.websiteUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {item.paperUrl && (
                       <a
                         href={item.paperUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-3 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center gap-3 transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                        className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center gap-2.5 transition-all duration-150 hover:scale-[1.01]"
                         title="Open study question paper PDF reference"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
-                          <FileText className="w-4 h-4" />
+                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-450 shrink-0">
+                          <FileText className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[9px] font-mono uppercase text-rose-500 dark:text-rose-455 font-extrabold tracking-wider">Reference Paper</span>
-                          <span className="text-[11px] font-sans text-slate-650 dark:text-slate-300 font-semibold truncate block">View PDF paper</span>
+                          <span className="block text-[8px] font-mono uppercase text-rose-500 dark:text-rose-455 font-extrabold tracking-wider">Reference Paper</span>
+                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">View PDF paper</span>
                         </div>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-350 dark:text-slate-550 group-hover/btn:text-rose-550 ml-auto shrink-0 transition-colors" />
+                        <ExternalLink className="w-3 h-3 text-slate-350 dark:text-slate-550 ml-auto shrink-0" />
                       </a>
                     )}
 
@@ -642,17 +891,17 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                         href={item.websiteUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-3 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center gap-3 transition-all duration-150 group/btn shadow-xs hover:scale-[1.01]"
+                        className="p-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center gap-2.5 transition-all duration-150 hover:scale-[1.01]"
                         title="Open questions provider website portal"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-650 dark:text-emerald-400 shrink-0">
-                          <Globe className="w-4 h-4" />
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-650 dark:text-emerald-450 shrink-0">
+                          <Globe className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[9px] font-mono uppercase text-emerald-600 dark:text-emerald-455 font-extrabold tracking-wider">Website Portal</span>
-                          <span className="text-[11px] font-sans text-slate-650 dark:text-slate-300 font-semibold truncate block">Go to problems</span>
+                          <span className="block text-[8px] font-mono uppercase text-emerald-600 dark:text-emerald-455 font-extrabold tracking-wider">Website Portal</span>
+                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">Go to problems</span>
                         </div>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-350 dark:text-slate-555 ml-auto shrink-0 transition-colors" />
+                        <ExternalLink className="w-3 h-3 text-slate-350 dark:text-slate-550 ml-auto shrink-0" />
                       </a>
                     )}
                   </div>
@@ -660,46 +909,70 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
                 {/* Personal Epiphany Notes */}
                 {item.notes && (
-                  <div className="space-y-1 mb-4 pt-1">
+                  <div className="space-y-1 mb-3 pt-0.5">
                     <span className="text-[9px] font-mono font-extrabold tracking-wider text-slate-455 uppercase block">Epiphany & Edge Cases:</span>
-                    <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-950/10 text-slate-650 dark:text-slate-350 px-3 py-2.5 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-medium">
+                    <p className="text-[11px] font-sans bg-amber-500/5 dark:bg-amber-950/15 text-slate-655 dark:text-slate-350 px-3 py-2 rounded-xl border border-amber-500/10 dark:border-amber-500/20 leading-relaxed font-semibold">
                       💡 {item.notes}
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Status Switch Controller inside card */}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800/60 mt-2">
-                <span className="block text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider mb-2">Advance Synaptic Stage:</span>
-                <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl">
-                  {([
-                    { id: 'Awaiting Solution', label: 'Queue' },
-                    { id: 'In Progress', label: 'solving' },
-                    { id: 'Completed', label: 'solved' },
-                    { id: 'Perfected', label: 'Mastered' }
-                  ] as const).map((stage) => {
-                    const isSelected = item.status === stage.id;
-                    let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
-                    if (isSelected) {
-                      if (stage.id === 'In Progress') activeBtnClass = "bg-rose-600 text-white shadow-xs";
-                      else if (stage.id === 'Completed') activeBtnClass = "bg-blue-600 text-white shadow-xs";
-                      else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-600 text-white shadow-xs";
-                      else activeBtnClass = "bg-amber-600 text-white shadow-xs";
-                    }
+              {/* Playful Interactive "Solve this Assignment" Trigger */}
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-2.5 relative z-10">
+                <button
+                  onClick={(e) => handleToggleSolving(item.id, e)}
+                  className={`w-full py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isSolving
+                      ? 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-xs shadow-cyan-500/10 animate-pulse'
+                      : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-350 border border-slate-200/60 dark:border-slate-850'
+                  }`}
+                >
+                  {isSolving ? (
+                    <>
+                      <Flame className="w-3.5 h-3.5 text-white animate-bounce" />
+                      <span>✨ SOLVING NOW (TOP PRIORITY)</span>
+                    </>
+                  ) : (
+                    <>
+                      <BrainCircuit className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>🎯 START SOLVING ACTIVE RETRIEVAL</span>
+                    </>
+                  )}
+                </button>
 
-                    return (
-                      <button
-                        key={stage.id}
-                        onClick={() => handleChangeStatus(item.id, stage.id)}
-                        className={`py-1 rounded-lg text-[10px] font-bold font-mono tracking-wide uppercase transition-all duration-150 cursor-pointer ${
-                          isSelected ? `${activeBtnClass} scale-102 font-extrabold` : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'
-                        }`}
-                      >
-                        {stage.label}
-                      </button>
-                    );
-                  })}
+                {/* Status stage advance controller bar inside card */}
+                <div>
+                  <span className="block text-[8px] font-mono font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-0.5">Advance Stage Progress:</span>
+                  <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl">
+                    {([
+                      { id: 'Awaiting Solution', label: 'Queue' },
+                      { id: 'In Progress', label: 'solving' },
+                      { id: 'Completed', label: 'solved' },
+                      { id: 'Perfected', label: 'Mastered' }
+                    ] as const).map((stage) => {
+                      const isSelected = item.status === stage.id && !isSolving;
+                      let activeBtnClass = "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100";
+                      if (isSelected) {
+                        if (stage.id === 'In Progress') activeBtnClass = "bg-rose-500 text-white shadow-xs";
+                        else if (stage.id === 'Completed') activeBtnClass = "bg-blue-500 text-white shadow-xs";
+                        else if (stage.id === 'Perfected') activeBtnClass = "bg-emerald-500 text-white shadow-xs";
+                        else activeBtnClass = "bg-amber-550 text-white shadow-xs";
+                      }
+
+                      return (
+                        <button
+                          key={stage.id}
+                          onClick={() => handleChangeStatus(item.id, stage.id)}
+                          className={`py-1 rounded-lg text-[9px] font-bold font-mono tracking-wide uppercase transition-all duration-150 cursor-pointer ${
+                            isSelected ? `${activeBtnClass} scale-102 font-extrabold` : 'text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'
+                          }`}
+                        >
+                          {stage.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -707,13 +980,13 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
           );
         })}
 
-        {filtered.length === 0 && (
+        {sortedFiltered.length === 0 && (
           <div className="col-span-1 md:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-4">
             <div className="w-16 h-16 bg-slate-50 dark:bg-slate-950 rounded-full flex items-center justify-center text-slate-400 mx-auto">
               <Award className="w-8 h-8 text-slate-350" />
             </div>
             <div className="max-w-md mx-auto space-y-1">
-              <h4 className="font-bold font-sans text-slate-805 dark:text-slate-200">No Assignments Saved</h4>
+              <h4 className="font-bold font-sans text-slate-855 dark:text-slate-200">No Assignments Saved</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 Add an assignment reference sheet, specify its papers details and online problem links to start practicing.
               </p>
