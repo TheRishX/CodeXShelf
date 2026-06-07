@@ -182,6 +182,22 @@ export function SubtopicView({
   onDeleteSubtopic
 }: SubtopicViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('pdfs');
+  const [tabManagerOpen, setTabManagerOpen] = useState(false);
+
+  // Compute active subtopic tabs
+  const defaultSubTabs = ['tracker', 'pdfs', 'notes', 'videos', 'concepts', 'dashboard'];
+  const activeSubTabs = dbState.activeSubtopicTabs && dbState.activeSubtopicTabs.length > 0
+    ? dbState.activeSubtopicTabs
+    : defaultSubTabs;
+
+  const visibleTabs = TABS.filter(tab => activeSubTabs.includes(tab.id));
+
+  // If the active tab is deactivated, fallback immediately
+  React.useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some(t => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id as TabType);
+    }
+  }, [dbState.activeSubtopicTabs, activeTab, visibleTabs]);
   
   // Sizing and sync headers states
   const [textSize, setTextSize] = useState<'A-' | 'A' | 'A+'>('A-');
@@ -1085,7 +1101,7 @@ export function SubtopicView({
 
       {/* Tabs list (Screen 5 Row of Pills) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-150 dark:border-slate-800">
-        {TABS.map(tab => {
+        {visibleTabs.map(tab => {
           const TabIcon = tab.icon;
           const isSelected = activeTab === tab.id;
 
@@ -1093,7 +1109,7 @@ export function SubtopicView({
             <button
               key={tab.id}
               onClick={() => {
-                setActiveTab(tab.id);
+                setActiveTab(tab.id as TabType);
                 setAiError('');
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold tracking-wide uppercase transition-all shrink-0 cursor-pointer border
@@ -1108,7 +1124,85 @@ export function SubtopicView({
             </button>
           );
         })}
+
+        {/* Modular Custom tabs config button */}
+        <button
+          type="button"
+          onClick={() => setTabManagerOpen(!tabManagerOpen)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all shrink-0 cursor-pointer border border-dashed
+            ${tabManagerOpen
+              ? 'bg-amber-500/10 border-amber-500 text-amber-600 dark:text-amber-450'
+              : 'border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/35'
+            }
+          `}
+          title="Add or remove workspace tabs inside subtopic view"
+        >
+          <span>{tabManagerOpen ? '✕ Close Manager' : '⚙️ Tab Manager'}</span>
+          <span className="text-[9px] bg-slate-150 dark:bg-slate-800 text-slate-550 dark:text-slate-400 px-1.5 py-0.5 rounded font-sans leading-tight">
+            {TABS.length - visibleTabs.length} hidden
+          </span>
+        </button>
       </div>
+
+      {/* Interactive Tabs configuration inline card */}
+      {tabManagerOpen && (
+        <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200/85 dark:border-slate-800/80 rounded-2xl animate-in slide-in-from-top-3 duration-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-bold font-mono uppercase text-slate-500 dark:text-slate-405 tracking-wider">
+                ⚙️ Subtopic Workspace Tabs Customizer
+              </h4>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-sans leading-relaxed">
+                Add or remove dynamic tools for this subtopic workspace instantly. Hiding a tab preserves your documents and notes.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {TABS.map(tab => {
+              const IsActive = activeSubTabs.includes(tab.id);
+              const TabIcon = tab.icon;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    let nextTabs: string[];
+                    if (IsActive) {
+                      if (visibleTabs.length <= 1) return; // Prevent deleting everything
+                      nextTabs = activeSubTabs.filter(id => id !== tab.id);
+                    } else {
+                      nextTabs = [...activeSubTabs, tab.id];
+                    }
+                    onUpdateDb({ activeSubtopicTabs: nextTabs });
+                  }}
+                  disabled={IsActive && visibleTabs.length <= 1}
+                  className={`p-3 rounded-xl border flex items-center justify-between transition-all select-none cursor-pointer text-left
+                    ${IsActive
+                      ? 'bg-white dark:bg-slate-950 border-blue-500 shadow-2xs'
+                      : 'bg-slate-100/30 dark:bg-slate-950/20 border-slate-200 dark:border-slate-800/80 opacity-60 hover:opacity-100'
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`p-1.5 rounded-lg ${IsActive ? 'bg-blue-600/10 text-blue-650 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-405'}`}>
+                      <TabIcon className="w-4 h-4" />
+                    </div>
+                    <span className={`text-xs font-semibold ${IsActive ? 'text-slate-905 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {tab.label}
+                    </span>
+                  </div>
+
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${IsActive ? 'border-transparent bg-blue-600 text-white animate-in zoom-in-50 duration-100' : 'border-slate-300 bg-transparent'}`}>
+                    {IsActive && <Check className="w-2.5 h-2.5 stroke-[4.5]" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {activeTab === 'dashboard' ? (
         /* =================== GE-STUDY STATION / ASSISTANT DASHBOARD LAYOUT =================== */

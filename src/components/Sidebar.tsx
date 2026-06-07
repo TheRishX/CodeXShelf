@@ -4,7 +4,7 @@ import {
   GraduationCap, Code, Database, Cloud, Cpu, Layers, Atom, Terminal, Globe,
   Network, BrainCircuit, Compass, Award, Coffee, Lock, FileText, Server, Landmark,
   Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop, Flame, GripVertical,
-  Pencil
+  Pencil, ClipboardList, Eye, EyeOff, Trash2, Settings
 } from 'lucide-react';
 import { Topic, CustomUser, DatabaseState } from '../types';
 
@@ -25,6 +25,7 @@ interface SidebarProps {
   sidebarOrder?: string[];
   onUpdateDb?: (updates: Partial<DatabaseState>) => void;
   customMenuLabels?: Record<string, string>;
+  activeSidebarItems?: string[];
 }
 
 const AVAILABLE_ICONS = [
@@ -71,7 +72,8 @@ export function Sidebar({
   streak,
   sidebarOrder,
   onUpdateDb,
-  customMenuLabels
+  customMenuLabels,
+  activeSidebarItems
 }: SidebarProps) {
   const todayStr = (() => {
     const d = new Date();
@@ -90,6 +92,7 @@ export function Sidebar({
   // States for inline renaming of menu options & topics
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const [isSidebarEditMode, setIsSidebarEditMode] = useState(false);
 
   const handleSaveEdit = (id: string, isMenu: boolean) => {
     if (!editingName.trim()) {
@@ -113,6 +116,14 @@ export function Sidebar({
       }
     }
     setEditingId(null);
+  };
+
+  const handleRemoveSidebarItem = (itemId: string) => {
+    if (currentActiveSidebarItems.length <= 1) return;
+    const updated = currentActiveSidebarItems.filter(id => id !== itemId);
+    if (onUpdateDb) {
+      onUpdateDb({ activeSidebarItems: updated });
+    }
   };
 
   // New Topic details form state
@@ -142,37 +153,51 @@ export function Sidebar({
 
   const currentIconDetails = AVAILABLE_ICONS.find(i => i.name === selectedIcon) || AVAILABLE_ICONS[0];
 
+  const [sidebarConfigOpen, setSidebarConfigOpen] = useState(false);
+
   // Configured default menu options available inside the sidebar
-  const BASE_MENU_ITEMS = [
-    { id: 'dashboard', label: 'Dashboard', icon: Compass, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'topicshelf', label: 'Topicshelf', icon: Layers, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'pdfs', label: 'PDF Reference Links', icon: FileText, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'videos', label: 'Videos', icon: Video, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'concepts', label: 'Concepts', icon: Lightbulb, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'trackers', label: 'Topic Tracker', icon: ClipboardCheck, colorClass: 'text-blue-600', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-500' },
-    { id: 'assignments', label: 'Assignments', icon: Award, colorClass: 'text-rose-600', activeBg: 'bg-rose-500/10 dark:bg-rose-955/15 text-rose-600 dark:text-rose-400 border-rose-550 dark:border-rose-400', isHot: true },
-    { id: 'quicknotes', label: 'Universal Quick Notes', icon: Sparkles, colorClass: 'text-amber-500', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400' },
+  const ALL_POSSIBLE_MENU_ITEMS = [
+    { id: 'dashboard', label: 'Dashboard', icon: Compass, colorClass: 'text-blue-650', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-650 dark:text-blue-400 border-blue-650 dark:border-blue-500', desc: 'Main dashboard, study streaks, recently visited subjects and high-yield actions' },
+    { id: 'topicshelf', label: 'Topicshelf', icon: Layers, colorClass: 'text-blue-650', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-650 dark:text-blue-400 border-blue-650 dark:border-blue-500', desc: 'Symmetrical digital desk representing all study topics & interactive subtopics' },
+    { id: 'pdfs', label: 'PDF Reference Links', icon: FileText, colorClass: 'text-indigo-600', activeBg: 'bg-indigo-50/50 dark:bg-indigo-950/10 text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-500', desc: 'Consolidated vault linking direct handbook PDFs, lectures slides & research documents' },
+    { id: 'videos', label: 'Videos', icon: Video, colorClass: 'text-emerald-600', activeBg: 'bg-emerald-50/50 dark:bg-emerald-950/10 text-emerald-600 dark:text-emerald-400 border-emerald-600 dark:border-emerald-500', desc: 'Sleek embedded video player playlist linking reference links to AI note generator' },
+    { id: 'concepts', label: 'Concepts', icon: Lightbulb, colorClass: 'text-amber-550', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'Architectural definitions of systems structures & core mathematical formulas glossary' },
+    { id: 'trackers', label: 'Topic Tracker', icon: ClipboardCheck, colorClass: 'text-violet-650', activeBg: 'bg-violet-50/50 dark:bg-violet-955/15 text-violet-650 dark:text-violet-400 border-violet-650 dark:border-violet-500', desc: 'Cognitive retrieval intervals checking and confidence level slider grid tracker' },
+    { id: 'assignments', label: 'Assignments', icon: Award, colorClass: 'text-rose-600', activeBg: 'bg-rose-500/10 dark:bg-rose-955/15 text-rose-600 dark:text-rose-450 border-rose-550 dark:border-rose-450', isHot: true, desc: 'Assigned programming problems sheets, deadlines checklist & reference resources' },
+    { id: 'quicknotes', label: 'Universal Quick Notes', icon: Sparkles, colorClass: 'text-amber-500', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'Floating system scratchpad for immediate cognitive thoughts & raw information captures' },
+    { id: 'todo', label: 'Psychological To-Do', icon: ClipboardList, colorClass: 'text-indigo-550', activeBg: 'bg-indigo-50/50 dark:bg-indigo-950/10 text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-500', desc: 'Gamified list of daily task loops, priority checkpoints & learning reminders' },
+    { id: 'vault', label: 'Digital Curator Vault', icon: BookOpen, colorClass: 'text-sky-600', activeBg: 'bg-sky-50/50 dark:bg-sky-950/10 text-sky-600 dark:text-sky-400 border-sky-600 dark:border-sky-500', desc: 'Global curation index and categorizer of resources on the web' },
+    { id: 'notes', label: 'Topic Notes Scratchpads', icon: FileText, colorClass: 'text-slate-600', activeBg: 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-350 border-slate-400 dark:border-slate-500', desc: 'Isolated quick notes lists across all active subtopic modules' },
+    { id: 'coding', label: 'Sandbox Labs', icon: Code, colorClass: 'text-amber-600', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'Interactive developer sandbox for syntax structures & programmatic practice tests' },
+    { id: 'interviews', label: 'Simulation Interviews', icon: BrainCircuit, colorClass: 'text-teal-600', activeBg: 'bg-teal-50/50 dark:bg-teal-950/10 text-teal-600 dark:text-teal-450 border-teal-600 dark:border-teal-500', desc: 'Simulated system interview scenario lists sorted by role target tiers' },
+    { id: 'quizzes', label: 'Assessment Arena', icon: Cpu, colorClass: 'text-cyan-600', activeBg: 'bg-cyan-50/50 dark:bg-cyan-950/10 text-cyan-650 dark:text-cyan-400 border-cyan-600 dark:border-cyan-500', desc: 'Active recall multiple-choice question arrays center with explanation sheets' }
   ];
 
-  const DEFAULT_MENU_ITEMS = BASE_MENU_ITEMS.map(item => ({
+  const DEFAULT_MENU_ITEMS = ALL_POSSIBLE_MENU_ITEMS.map(item => ({
     ...item,
     label: customMenuLabels?.[item.id] || item.label
   }));
 
-  // Resolve dynamic reorder of menu options
+  const defaultSidebarItems = ['dashboard', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
+  const currentActiveSidebarItems = activeSidebarItems && activeSidebarItems.length > 0
+    ? activeSidebarItems
+    : defaultSidebarItems;
+
   const sidebarLinksList = sidebarOrder && sidebarOrder.length > 0
     ? [...sidebarOrder]
-    : ['dashboard', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
+    : defaultSidebarItems;
 
-  const orderedMenuItems = [...sidebarLinksList]
-    .map(id => DEFAULT_MENU_ITEMS.find(item => item.id === id))
-    .filter((meta): meta is typeof DEFAULT_MENU_ITEMS[0] => !!meta);
-
-  DEFAULT_MENU_ITEMS.forEach(m => {
-    if (!orderedMenuItems.some(item => item.id === m.id)) {
-      orderedMenuItems.push(m);
+  // Align custom sidebarLinksList with active units
+  const activeKeys = sidebarLinksList.filter(id => currentActiveSidebarItems.includes(id));
+  currentActiveSidebarItems.forEach(id => {
+    if (!activeKeys.includes(id)) {
+      activeKeys.push(id);
     }
   });
+
+  const orderedMenuItems = activeKeys
+    .map(id => DEFAULT_MENU_ITEMS.find(item => item.id === id))
+    .filter((meta): meta is typeof DEFAULT_MENU_ITEMS[0] => !!meta);
 
   // Drag and drop states for navigation menu list
   const [draggedMenuId, setDraggedMenuId] = useState<string | null>(null);
@@ -421,7 +446,7 @@ export function Sidebar({
               return (
                 <div
                   key={item.id}
-                  draggable
+                  draggable={isSidebarEditMode}
                   onDragStart={(e) => handleDragStartMenu(e, item.id)}
                   onDragOver={(e) => handleDragOverMenu(e, item.id)}
                   onDrop={(e) => handleDropMenu(e, item.id)}
@@ -431,9 +456,11 @@ export function Sidebar({
                     isOver ? 'bg-blue-50/50 dark:bg-blue-950/10 border border-dashed border-blue-500 scale-[1.02]' : 'border border-transparent'
                   } ${isDragged ? 'opacity-30' : ''}`}
                 >
-                  <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-1 rounded-sm shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <GripVertical className="w-3.5 h-3.5" />
-                  </div>
+                  {isSidebarEditMode && (
+                    <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-1 rounded-sm shrink-0 transition-opacity animate-in fade-in duration-100">
+                      <GripVertical className="w-3.5 h-3.5" />
+                    </div>
+                  )}
                   <div
                     onClick={() => {
                       if (editingId !== item.id) {
@@ -490,25 +517,81 @@ export function Sidebar({
                     {item.isHot && editingId !== item.id && (
                       <span className="text-[9px] bg-rose-500/15 dark:bg-rose-500/30 text-rose-600 dark:text-rose-450 px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-1">HOT</span>
                     )}
-                    {editingId !== item.id && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditingId(item.id);
-                          setEditingName(item.label);
-                        }}
-                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 ml-1 shrink-0 cursor-pointer"
-                        title="Edit name"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
+                    {isSidebarEditMode && editingId !== item.id && (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditingId(item.id);
+                            setEditingName(item.label);
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all shrink-0 cursor-pointer"
+                          title="Edit name"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {currentActiveSidebarItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleRemoveSidebarItem(item.id);
+                            }}
+                            className="p-1 rounded hover:bg-rose-105 dark:hover:bg-rose-955/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-450 transition-all shrink-0 cursor-pointer"
+                            title="Hide from sidebar"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
               );
             })}
+            
+            {/* Sidebar Module customizer anchor */}
+            <div className="px-3 pt-3 pb-1 border-t border-slate-100/50 dark:border-slate-800/40 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSidebarConfigOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-bold font-mono tracking-wider uppercase border border-dashed border-slate-200 dark:border-slate-850 text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-805 transition-all cursor-pointer min-w-0"
+                title="Enable, disable, or custom label any sidebar capability"
+              >
+                <Settings className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span className="truncate">Modules</span>
+                <span className="text-[9px] bg-blue-600/10 dark:bg-blue-650/20 text-blue-650 dark:text-blue-400 px-1 py-0.2 rounded-full font-sans lowercase font-semibold tracking-normal shrink-0">
+                  {ALL_POSSIBLE_MENU_ITEMS.length - currentActiveSidebarItems.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsSidebarEditMode(!isSidebarEditMode)}
+                className={`flex items-center justify-center gap-1 px-2 py-2 rounded-xl text-[10px] font-bold font-mono tracking-wider uppercase border transition-all cursor-pointer min-w-0
+                  ${isSidebarEditMode 
+                    ? 'bg-amber-500/10 dark:bg-amber-500/20 border-amber-500 text-amber-600 dark:text-amber-450 font-extrabold shadow-2xs' 
+                    : 'border-slate-200 dark:border-slate-850 text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-805'
+                  }
+                `}
+                title={isSidebarEditMode ? "Exit edit mode" : "Enter edit mode to reorder and rename elements"}
+              >
+                {isSidebarEditMode ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 font-extrabold" />
+                    <span className="truncate">Done</span>
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">Edit</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -549,7 +632,7 @@ export function Sidebar({
                 return (
                   <div
                     key={topic.id}
-                    draggable
+                    draggable={isSidebarEditMode}
                     onDragStart={(e) => handleDragStartTopic(e, topic.id)}
                     onDragOver={(e) => handleDragOverTopic(e, topic.id)}
                     onDrop={(e) => handleDropTopic(e, topic.id)}
@@ -559,9 +642,11 @@ export function Sidebar({
                       isOver ? 'bg-blue-50/50 dark:bg-blue-950/15 border border-dashed border-blue-500 scale-[1.02]' : 'border border-transparent'
                     } ${isDragged ? 'opacity-30' : ''}`}
                   >
-                    <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-0.5 rounded-sm shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical className="w-3.5 h-3.5" />
-                    </div>
+                    {isSidebarEditMode && (
+                      <div className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-700 hover:text-slate-500 p-0.5 rounded-sm shrink-0 transition-opacity animate-in fade-in duration-100">
+                        <GripVertical className="w-3.5 h-3.5" />
+                      </div>
+                    )}
                     <div
                       onClick={() => {
                         if (editingId !== topic.id) {
@@ -620,7 +705,7 @@ export function Sidebar({
                           <span className="truncate">{topic.name}</span>
                         )}
                       </div>
-                      {editingId !== topic.id && (
+                      {isSidebarEditMode && editingId !== topic.id && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -629,7 +714,7 @@ export function Sidebar({
                             setEditingId(topic.id);
                             setEditingName(topic.name);
                           }}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 ml-1 shrink-0 cursor-pointer"
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-855 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 transition-all shrink-0 cursor-pointer ml-1"
                           title="Edit topic name"
                         >
                           <Pencil className="w-3.5 h-3.5" />
@@ -836,6 +921,113 @@ export function Sidebar({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar Module Manager Modal */}
+      {sidebarConfigOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop screen mask */}
+          <div onClick={() => setSidebarConfigOpen(false)} className="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-xs" />
+
+          {/* Dialog Container */}
+          <div className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-3xl border border-gray-200/80 dark:border-gray-800/80 shadow-2xl p-6 overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-150 dark:border-gray-805">
+              <div>
+                <h3 className="font-bold font-sans text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-blue-500 animate-spin-slow" />
+                  <span>Module Manager</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Enable, disable, or custom-label application sections.
+                </p>
+              </div>
+              <button 
+                onClick={() => setSidebarConfigOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* List with scroll */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-1.5 scrollbar-thin">
+              {ALL_POSSIBLE_MENU_ITEMS.map(item => {
+                const IsActive = currentActiveSidebarItems.includes(item.id);
+                const ItemIcon = item.icon;
+                const customLabel = customMenuLabels?.[item.id] || item.label;
+
+                return (
+                  <div 
+                    key={item.id}
+                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                      IsActive 
+                        ? 'bg-slate-50/50 dark:bg-slate-900/35 border-slate-200 dark:border-slate-800/80' 
+                        : 'bg-slate-100/10 dark:bg-slate-950/5 border-slate-150 dark:border-slate-850/50 opacity-60 hover:opacity-85'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className={`p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0 ${item.colorClass}`}>
+                        <ItemIcon className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                            {customLabel}
+                          </h4>
+                          {item.isHot && (
+                            <span className="text-[9px] bg-rose-500/15 text-rose-600 dark:text-rose-450 px-1.5 py-0.5 rounded font-bold">HOT</span>
+                          )}
+                          {customLabel !== item.label && (
+                            <span className="text-[10px] text-gray-400 font-mono italic">({item.label})</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      {IsActive ? (
+                        <button
+                          type="button"
+                          disabled={currentActiveSidebarItems.length <= 1}
+                          onClick={() => handleRemoveSidebarItem(item.id)}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase bg-rose-50 dark:bg-rose-955/20 text-rose-650 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer border border-rose-200/20 animate-in fade-in duration-100"
+                        >
+                          Hide Option
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...currentActiveSidebarItems, item.id];
+                            if (onUpdateDb) {
+                              onUpdateDb({ activeSidebarItems: updated });
+                            }
+                          }}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold font-mono tracking-wider uppercase bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer shadow-sm animate-in fade-in duration-100"
+                        >
+                          + Add
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-4 border-t border-gray-150 dark:border-gray-805 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSidebarConfigOpen(false)}
+                className="px-6 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-950 font-semibold shadow-md active:scale-98 transition-all"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -182,6 +182,8 @@ export interface DatabaseState {
   };
   sidebarOrder?: string[];
   customMenuLabels?: Record<string, string>;
+  activeSidebarItems?: string[];
+  activeSubtopicTabs?: string[];
 }
 
 export interface CustomUser {

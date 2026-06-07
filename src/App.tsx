@@ -701,6 +701,7 @@ export default function App() {
         sidebarOrder={dbState.sidebarOrder}
         onUpdateDb={handleUpdateDatabase}
         customMenuLabels={dbState.customMenuLabels}
+        activeSidebarItems={dbState.activeSidebarItems}
       />
 
       {/* 2. Main study content canvas scroll board - flex container with sticky child bar */}
