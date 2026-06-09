@@ -3,16 +3,17 @@ import {
   Award, Sparkles, Plus, Search, Trash2, ExternalLink, FileText, Globe, 
   Calendar, Flame, CheckCircle2, TrendingUp, X, Check, Edit3, HelpCircle,
   FileCode, Zap, BrainCircuit, Trophy, Star, LayoutGrid, List, Menu,
-  Pin, GripVertical
+  Pin, GripVertical, Download, Upload
 } from 'lucide-react';
 import { DatabaseState, AssignmentItem } from '../types';
 
 interface AllAssignmentsViewProps {
   dbState: DatabaseState;
   onUpdateDb: (updates: Partial<DatabaseState>) => void;
+  onSelectView?: (view: string) => void;
 }
 
-export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewProps) {
+export function AllAssignmentsView({ dbState, onUpdateDb, onSelectView }: AllAssignmentsViewProps) {
   const assignments = dbState.assignments || [];
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -105,6 +106,84 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
   const [status, setStatus] = useState<AssignmentItem['status']>('Awaiting Solution');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [enableLinkedNote, setEnableLinkedNote] = useState(false);
+
+  const triggerLinkedNote = (resourceId: string, resourceTitle: string, resourceType: 'pdf' | 'assignment' | 'book' | 'video') => {
+    const quickNotes = dbState.quickNotes || [];
+    const existingNote = quickNotes.find(q => q.linkedResourceId === resourceId && q.linkedResourceType === resourceType);
+    
+    if (existingNote) {
+      localStorage.setItem('target_quick_note_id', existingNote.id);
+    } else {
+      const newNoteId = `qnote-${Date.now()}`;
+      const newNote = {
+        id: newNoteId,
+        title: `Note: ${resourceTitle}`,
+        content: `<div><strong>Linked Resource:</strong> <span style="background-color: #fef08a; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: black; font-family: monospace;">${resourceType.toUpperCase()}: ${resourceTitle}</span></div><br><div>Start typing your notes about this ${resourceType}...</div>`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isPinned: true,
+        isFavorite: false,
+        color: '#fbbf24',
+        linkedResourceId: resourceId,
+        linkedResourceType: resourceType,
+        linkedResourceTitle: resourceTitle
+      };
+      onUpdateDb({ quickNotes: [newNote, ...quickNotes] });
+      localStorage.setItem('target_quick_note_id', newNoteId);
+    }
+    
+    if (onSelectView) {
+      onSelectView('quicknotes');
+    }
+  };
+
+  // Local PDF states
+  const [localPdfData, setLocalPdfData] = useState<string>('');
+  const [localPdfName, setLocalPdfName] = useState<string>('');
+  const [localPdfSize, setLocalPdfSize] = useState<string>('');
+  const assignmentFileRef = React.useRef<HTMLInputElement>(null);
+  const editAssignmentFileRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAssignmentFileChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        setErrorMsg('Please select a valid PDF document.');
+        return;
+      }
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        if (isEdit && editingItem) {
+          setEditingItem({
+            ...editingItem,
+            localPdfData: base64,
+            localPdfName: file.name,
+            localPdfSize: sizeMB
+          });
+        } else {
+          setLocalPdfData(base64);
+          setLocalPdfName(file.name);
+          setLocalPdfSize(sizeMB);
+        }
+      };
+      reader.onerror = () => {
+        setErrorMsg('Failed to process local PDF.');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDownloadOfflineAssignment = (fileName: string, fileData: string) => {
+    const link = document.createElement('a');
+    link.href = fileData;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Editing state
   const [editingItem, setEditingItem] = useState<AssignmentItem | null>(null);
@@ -140,11 +219,15 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
       id: `assignment-${Date.now()}`,
       title: title.trim(),
       description: description.trim(),
-      paperUrl: paperUrl.trim(),
+      paperUrl: paperUrl.trim() || undefined,
       websiteUrl: websiteUrl.trim(),
+      localPdfData: localPdfData || undefined,
+      localPdfName: localPdfName || undefined,
+      localPdfSize: localPdfSize || undefined,
       status,
       notes: notes.trim(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      enableLinkedNote
     };
 
     onUpdateDb({
@@ -158,7 +241,11 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
     setWebsiteUrl('');
     setStatus('Awaiting Solution');
     setNotes('');
+    setEnableLinkedNote(false);
     setErrorMsg('');
+    setLocalPdfData('');
+    setLocalPdfName('');
+    setLocalPdfSize('');
     setIsModalOpen(false);
   };
 
@@ -173,10 +260,14 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
           ...a,
           title: editingItem.title.trim(),
           description: editingItem.description.trim(),
-          paperUrl: editingItem.paperUrl.trim(),
+          paperUrl: editingItem.paperUrl?.trim() || undefined,
           websiteUrl: editingItem.websiteUrl.trim(),
+          localPdfData: editingItem.localPdfData,
+          localPdfName: editingItem.localPdfName,
+          localPdfSize: editingItem.localPdfSize,
           status: editingItem.status,
-          notes: editingItem.notes?.trim()
+          notes: editingItem.notes?.trim(),
+          enableLinkedNote: editingItem.enableLinkedNote
         };
       }
       return a;
@@ -496,16 +587,25 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   </button>
 
                   {/* Tiny links */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 bg-white/50 dark:bg-slate-900/55 backdrop-blur-xs p-0.5 rounded-lg">
+                    {item.localPdfData && (
+                      <button
+                        onClick={() => handleDownloadOfflineAssignment(item.localPdfName || 'document.pdf', item.localPdfData!)}
+                        className="p-1 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/15 rounded-md text-blue-600 dark:text-blue-400 transition cursor-pointer"
+                        title={`Download offline PDF: ${item.localPdfName}`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                      </button>
+                    )}
                     {item.paperUrl && (
                       <a
                         href={item.paperUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-1.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 rounded-md text-rose-600 dark:text-rose-400 transition"
-                        title="View PDF paper reference"
+                        className="p-1 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 rounded-md text-rose-600 dark:text-rose-450 transition"
+                        title="View online PDF reference link"
                       >
-                        <FileText className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3.5 h-3.5 text-rose-500" />
                       </a>
                     )}
                     {item.websiteUrl && (
@@ -513,10 +613,10 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                         href={item.websiteUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-1.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 rounded-md text-emerald-600 dark:text-emerald-400 transition"
+                        className="p-1 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 rounded-md text-emerald-600 dark:text-emerald-400 transition"
                         title="Open problems workspace"
                       >
-                        <Globe className="w-3.5 h-3.5" />
+                        <Globe className="w-3.5 h-3.5 text-emerald-500" />
                       </a>
                     )}
                   </div>
@@ -555,6 +655,27 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
 
                   {/* Actions */}
                   <div className="flex items-center gap-0.5 border-l border-slate-200 dark:border-slate-800 pl-1.5">
+                    <button
+                      onClick={() => {
+                        const updated = assignments.map(a => a.id === item.id ? { ...a, enableLinkedNote: !a.enableLinkedNote } : a);
+                        onUpdateDb({ assignments: updated });
+                      }}
+                      className={`p-1 rounded-lg transition-all cursor-pointer ${
+                        item.enableLinkedNote ? 'text-amber-550 bg-amber-500/10' : 'text-slate-400 hover:text-slate-700'
+                      }`}
+                      title={item.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                    >
+                      🔗
+                    </button>
+                    {item.enableLinkedNote && (
+                      <button
+                        onClick={() => triggerLinkedNote(item.id, item.title, 'assignment')}
+                        className="p-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-305/30 rounded-lg text-amber-600 dark:text-amber-400 transition cursor-pointer text-[10px] font-mono leading-none flex items-center shrink-0"
+                        title="Open connected study note"
+                      >
+                        📝
+                      </button>
+                    )}
                     <button
                       onClick={() => setEditingItem(item)}
                       className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition cursor-pointer"
@@ -663,21 +784,43 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                       </button>
 
                       <button
+                        onClick={() => {
+                          const updated = assignments.map(a => a.id === item.id ? { ...a, enableLinkedNote: !a.enableLinkedNote } : a);
+                          onUpdateDb({ assignments: updated });
+                        }}
+                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                          item.enableLinkedNote ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 dark:text-slate-550'
+                        }`}
+                        title={item.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                      >
+                        🔗
+                      </button>
+                      <button
                         onClick={() => setEditingItem(item)}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-450 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-455 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
                         title="Edit Quest Details"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteItem(item.id)}
-                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/25 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-955/25 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
                         title="Retire Quest"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
+
+                  {item.enableLinkedNote && (
+                    <button
+                      onClick={() => triggerLinkedNote(item.id, item.title, 'assignment')}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-300/40 text-amber-705 dark:text-amber-400 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer shadow-xs my-1 relative z-10"
+                      title="Open connected study note"
+                    >
+                      <span>📝 Open Connected Quick Note</span>
+                    </button>
+                  )}
 
                   {/* Large Exclusive Solving Button */}
                   <button
@@ -702,8 +845,22 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   </button>
 
                   {/* Links Row */}
-                  {(item.paperUrl || item.websiteUrl) && (
+                  {(item.paperUrl || item.localPdfData || item.websiteUrl) && (
                     <div className="flex flex-col gap-2">
+                      {item.localPdfData && (
+                        <button
+                          onClick={() => handleDownloadOfflineAssignment(item.localPdfName || 'assignment_document.pdf', item.localPdfData!)}
+                          className="p-2.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/15 dark:border-blue-500/20 rounded-xl flex items-center justify-between transition-all duration-150 shadow-xs hover:scale-[1.01] text-left cursor-pointer w-full text-slate-700 dark:text-slate-300"
+                          title="Download/Open local offline PDF document"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-blue-600 shrink-0 animate-pulse" />
+                            <span className="text-xs font-sans font-semibold truncate">Offline PDF: {item.localPdfName}</span>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-slate-400" />
+                        </button>
+                      )}
+
                       {item.paperUrl && (
                         <a
                           href={item.paperUrl}
@@ -712,8 +869,8 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                           className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center justify-between transition-all duration-150 shadow-xs hover:scale-[1.01]"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-rose-600 shrink-0" />
-                            <span className="text-xs font-sans text-slate-650 dark:text-slate-300 font-semibold truncate">View Reference Paper</span>
+                            <ExternalLink className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span className="text-xs font-sans text-slate-655 dark:text-slate-300 font-semibold truncate">Online PDF reference</span>
                           </div>
                           <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                         </a>
@@ -837,6 +994,18 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     </button>
 
                     <button
+                      onClick={() => {
+                        const updated = assignments.map(a => a.id === item.id ? { ...a, enableLinkedNote: !a.enableLinkedNote } : a);
+                        onUpdateDb({ assignments: updated });
+                      }}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        item.enableLinkedNote ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 dark:text-slate-550'
+                      }`}
+                      title={item.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                    >
+                      🔗
+                    </button>
+                    <button
                       onClick={() => setEditingItem(item)}
                       className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-all cursor-pointer"
                       title="Edit Quest Details"
@@ -853,6 +1022,16 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                   </div>
                 </div>
 
+                {item.enableLinkedNote && (
+                  <button
+                    onClick={() => triggerLinkedNote(item.id, item.title, 'assignment')}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-300/40 text-amber-705 dark:text-amber-300 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer shadow-xs my-1 relative z-10"
+                    title="Open connected study note"
+                  >
+                    <span>📝 Open Connected Note</span>
+                  </button>
+                )}
+
                 <h3 className="text-base font-extrabold font-sans text-slate-800 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors tracking-tight leading-snug">
                   {item.title}
                 </h3>
@@ -862,27 +1041,40 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     {item.description}
                   </p>
                 )}
+                    {/* Conditional Double Core Resources Link Section */}
+                {(item.paperUrl || item.localPdfData || item.websiteUrl) && (
+                  <div className="grid gap-2.5 my-3.5 grid-cols-1 sm:grid-cols-2">
+                    {item.localPdfData && (
+                      <button
+                        onClick={() => handleDownloadOfflineAssignment(item.localPdfName || 'assignment_document.pdf', item.localPdfData!)}
+                        className="p-2 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/15 dark:border-blue-500/20 rounded-xl flex items-center gap-2 transition-all duration-150 hover:scale-[1.01] text-left cursor-pointer w-full"
+                        title="Download/Open the local offline PDF document"
+                      >
+                        <div className="w-6.5 h-6.5 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                          <FileText className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-[8px] font-mono uppercase text-blue-500 dark:text-blue-400 font-extrabold tracking-wider">Offline PDF</span>
+                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">{item.localPdfName || 'View offline paper'}</span>
+                        </div>
+                      </button>
+                    )}
 
-
-                {/* Conditional Double Core Resources Link Section */}
-                {(item.paperUrl || item.websiteUrl) && (
-                  <div className={`grid gap-3 my-3.5 ${item.paperUrl && item.websiteUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {item.paperUrl && (
                       <a
                         href={item.paperUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-2.5 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center gap-2.5 transition-all duration-150 hover:scale-[1.01]"
-                        title="Open study question paper PDF reference"
+                        className="p-2 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/15 dark:border-rose-500/20 rounded-xl flex items-center gap-2 transition-all duration-150 hover:scale-[1.01] w-full"
+                        title="Open external online PDF reference link"
                       >
-                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-450 shrink-0">
-                          <FileText className="w-3.5 h-3.5" />
+                        <div className="w-6.5 h-6.5 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-450 shrink-0">
+                          <ExternalLink className="w-3.5 h-3.5 text-rose-500" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[8px] font-mono uppercase text-rose-500 dark:text-rose-455 font-extrabold tracking-wider">Reference Paper</span>
-                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">View PDF paper</span>
+                          <span className="block text-[8px] font-mono uppercase text-rose-500 dark:text-rose-455 font-extrabold tracking-wider">Online Link</span>
+                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">Remote reference</span>
                         </div>
-                        <ExternalLink className="w-3 h-3 text-slate-350 dark:text-slate-550 ml-auto shrink-0" />
                       </a>
                     )}
 
@@ -891,17 +1083,16 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                         href={item.websiteUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center gap-2.5 transition-all duration-150 hover:scale-[1.01]"
-                        title="Open questions provider website portal"
+                        className="col-span-full p-2 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl flex items-center gap-2 transition-all duration-150 hover:scale-[1.01] w-full"
+                        title="Open website problem portal connection"
                       >
-                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-650 dark:text-emerald-450 shrink-0">
-                          <Globe className="w-3.5 h-3.5" />
+                        <div className="w-6.5 h-6.5 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-650 dark:text-emerald-450 shrink-0">
+                          <Globe className="w-3.5 h-3.5 text-emerald-500 animate-spin-slow" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-[8px] font-mono uppercase text-emerald-600 dark:text-emerald-455 font-extrabold tracking-wider">Website Portal</span>
-                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">Go to problems</span>
+                          <span className="block text-[8px] font-mono uppercase text-emerald-600 dark:text-emerald-450 font-extrabold tracking-wider">Problem Portal Connection Link</span>
+                          <span className="text-[10px] font-sans text-slate-655 dark:text-slate-300 font-semibold truncate block">{item.websiteUrl}</span>
                         </div>
-                        <ExternalLink className="w-3 h-3 text-slate-350 dark:text-slate-550 ml-auto shrink-0" />
                       </a>
                     )}
                   </div>
@@ -1089,38 +1280,69 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     Step 2: Resource Anchors
                   </span>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/10 space-y-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-rose-650 dark:text-rose-400">
-                        <FileText className="w-4 h-4" />
-                        PDF Question Paper Link
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* PDF Reference Card: Supports BOTH Online & Offline link */}
+                    <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/10 space-y-3.5 animate-pulse-once">
+                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-rose-650 dark:text-rose-450">
+                        <FileText className="w-4 h-4 text-rose-500" />
+                        PDF Question Paper (Online and/or Local)
                       </label>
-                      <input
-                        type="url"
-                        placeholder="https://stanford.edu/...pdf"
-                        value={paperUrl}
-                        onChange={(e) => setPaperUrl(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-rose-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
-                      />
-                      <span className="text-[10px] text-rose-500/85 block leading-tight font-mono">
-                        Loads the academic reference.
-                      </span>
+                      
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">Option A: Online PDF Link</span>
+                        <input
+                          type="url"
+                          placeholder="e.g. https://stanford.edu/...pdf"
+                          value={paperUrl}
+                          onChange={(e) => setPaperUrl(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-rose-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                        />
+                      </div>
+
+                      <div className="h-[1px] bg-rose-500/10" />
+
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">Option B: Local Assignment PDF</span>
+                        <input
+                          type="file"
+                          ref={assignmentFileRef}
+                          accept="application/pdf"
+                          onChange={(e) => handleAssignmentFileChange(e, false)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => assignmentFileRef.current?.click()}
+                          className="w-full py-2 px-3 rounded-lg border border-dashed border-rose-500/30 hover:border-rose-500 hover:bg-rose-500/5 flex items-center justify-center gap-1.5 transition-colors text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-rose-500" />
+                          {localPdfName ? (
+                            <span className="truncate max-w-[150px] font-bold text-emerald-600">{localPdfName} ({localPdfSize})</span>
+                          ) : (
+                            <span>Fetch Local PDF from laptop</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 space-y-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-emerald-650 dark:text-emerald-400">
-                        <Globe className="w-4 h-4" />
-                        Website Problem Portal Link
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://leetcode.com/problems/..."
-                        value={websiteUrl}
-                        onChange={(e) => setWebsiteUrl(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-550/20 focus:border-emerald-550"
-                      />
-                      <span className="text-[10px] text-emerald-600/85 dark:text-emerald-400/85 block leading-tight font-mono">
-                        Hosts the active workspace environment.
+                    {/* Portal Web Link Card */}
+                    <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 flex flex-col justify-between space-y-3.5">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-emerald-650 dark:text-emerald-450 mb-2">
+                          <Globe className="w-4 h-4 text-emerald-500" />
+                          Website Problem Portal Link
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="e.g. https://leetcode.com/problems/..."
+                          value={websiteUrl}
+                          onChange={(e) => setWebsiteUrl(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-550/20 focus:border-emerald-550"
+                        />
+                      </div>
+                      
+                      <span className="text-[10px] text-emerald-600/85 dark:text-emerald-400/85 block leading-normal font-mono">
+                        Hosts the active workspace, IDE, or submission portal details connected to this assignment.
                       </span>
                     </div>
                   </div>
@@ -1185,6 +1407,21 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Connection Checkbox */}
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 animate-in fade-in">
+                  <input
+                    type="checkbox"
+                    id="assignmentEnableLinkedNote"
+                    checked={enableLinkedNote}
+                    onChange={(e) => setEnableLinkedNote(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="assignmentEnableLinkedNote" className="text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                    Enable Connected Quick Note 🔗
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Creates a handy floating Study note linkage for active assignment coding/solving.</span>
+                  </label>
                 </div>
 
 
@@ -1288,31 +1525,66 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                     Step 2: Resource Anchors
                   </span>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/10 space-y-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-rose-650 dark:text-rose-450">
-                        <FileText className="w-4 h-4" />
-                        PDF Question Paper Link
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/10 space-y-3.5">
+                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-rose-650 dark:text-rose-455">
+                        <FileText className="w-4 h-4 text-rose-500" />
+                        PDF Question Paper (Online and/or Local)
                       </label>
-                      <input
-                        type="url"
-                        value={editingItem.paperUrl}
-                        onChange={(e) => setEditingItem({ ...editingItem, paperUrl: e.target.value })}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-rose-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
-                      />
+                      
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-450 block">Option A: Online PDF Link</span>
+                        <input
+                          type="url"
+                          value={editingItem.paperUrl || ''}
+                          onChange={(e) => setEditingItem({ ...editingItem, paperUrl: e.target.value })}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-rose-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                        />
+                      </div>
+
+                      <div className="h-[1px] bg-rose-505/10" />
+
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-450 block">Option B: Local Assignment PDF</span>
+                        <input
+                          type="file"
+                          ref={editAssignmentFileRef}
+                          accept="application/pdf"
+                          onChange={(e) => handleAssignmentFileChange(e, true)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => editAssignmentFileRef.current?.click()}
+                          className="w-full py-2.5 px-3 rounded-lg border border-dashed border-rose-500/30 hover:border-rose-500 hover:bg-rose-500/5 flex items-center justify-center gap-1.5 transition-colors text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-rose-500" />
+                          {editingItem.localPdfName ? (
+                            <span className="truncate max-w-[150px] font-bold text-emerald-600">{editingItem.localPdfName} ({editingItem.localPdfSize})</span>
+                          ) : (
+                            <span>Fetch Local PDF from laptop</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 space-y-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-emerald-650 dark:text-emerald-450">
-                        <Globe className="w-4 h-4" />
-                        Website Problem Portal Link
-                      </label>
-                      <input
-                        type="url"
-                        value={editingItem.websiteUrl}
-                        onChange={(e) => setEditingItem({ ...editingItem, websiteUrl: e.target.value })}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-550/20 focus:border-emerald-550"
-                      />
+                    <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 flex flex-col justify-between space-y-3.5">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-bold font-sans text-emerald-650 dark:text-emerald-450 mb-2">
+                          <Globe className="w-4 h-4 text-emerald-500" />
+                          Website Problem Portal Link
+                        </label>
+                        <input
+                          type="url"
+                          value={editingItem.websiteUrl}
+                          onChange={(e) => setEditingItem({ ...editingItem, websiteUrl: e.target.value })}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-500/20 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-550/20 focus:border-emerald-550"
+                        />
+                      </div>
+                      
+                      <span className="text-[10px] text-emerald-600/85 dark:text-emerald-400/85 block leading-normal font-mono">
+                        Hosts the active workspace, IDE, or submission portal details connected to this assignment.
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1354,6 +1626,21 @@ export function AllAssignmentsView({ dbState, onUpdateDb }: AllAssignmentsViewPr
                       })}
                     </div>
                   </div>
+                </div>
+
+                {/* Connection Checkbox */}
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 animate-in fade-in">
+                  <input
+                    type="checkbox"
+                    id="editAssignmentEnableLinkedNote"
+                    checked={!!editingItem.enableLinkedNote}
+                    onChange={(e) => setEditingItem({ ...editingItem, enableLinkedNote: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="editAssignmentEnableLinkedNote" className="text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                    Enable Connected Quick Note 🔗
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Creates a handy floating Study note linkage for active assignment coding/solving.</span>
+                  </label>
                 </div>
 
 

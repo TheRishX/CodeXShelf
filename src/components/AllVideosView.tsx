@@ -13,9 +13,10 @@ interface AllVideosViewProps {
   dbState: DatabaseState;
   onOpenSubtopic: (topicId: string, subtopicId: string) => void;
   onUpdateDb: (updates: Partial<DatabaseState>) => void;
+  onSelectView?: (view: string) => void;
 }
 
-export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideosViewProps) {
+export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb, onSelectView }: AllVideosViewProps) {
   const { topics, subtopics } = dbState;
   const videos = dbState.videos || [];
 
@@ -54,6 +55,37 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
   // Local object URL resolution map for browser session
   const [resolvedVideoUrls, setResolvedVideoUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [enableLinkedNote, setEnableLinkedNote] = useState(false);
+
+  const triggerLinkedNote = (resourceId: string, resourceTitle: string, resourceType: 'pdf' | 'assignment' | 'book' | 'video') => {
+    const quickNotes = dbState.quickNotes || [];
+    const existingNote = quickNotes.find(q => q.linkedResourceId === resourceId && q.linkedResourceType === resourceType);
+    
+    if (existingNote) {
+      localStorage.setItem('target_quick_note_id', existingNote.id);
+    } else {
+      const newNoteId = `qnote-${Date.now()}`;
+      const newNote = {
+        id: newNoteId,
+        title: `Note: ${resourceTitle}`,
+        content: `<div><strong>Linked Resource:</strong> <span style="background-color: #fef08a; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: black; font-family: monospace;">${resourceType.toUpperCase()}: ${resourceTitle}</span></div><br><div>Start typing your notes about this ${resourceType}...</div>`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isPinned: true,
+        isFavorite: false,
+        color: '#fbbf24',
+        linkedResourceId: resourceId,
+        linkedResourceType: resourceType,
+        linkedResourceTitle: resourceTitle
+      };
+      onUpdateDb({ quickNotes: [newNote, ...quickNotes] });
+      localStorage.setItem('target_quick_note_id', newNoteId);
+    }
+    
+    if (onSelectView) {
+      onSelectView('quicknotes');
+    }
+  };
 
   // IndexedDB Utilities for strictly local storage of video binaries
   const openIndexedDB = (): Promise<IDBDatabase> => {
@@ -211,6 +243,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
     setSelectedFile(null);
     setVideoType('link');
     setFormError('');
+    setEnableLinkedNote(false);
     setCurrentStep(1);
     setIsModalOpen(true);
   };
@@ -340,6 +373,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
       title: formTitle.trim(),
       url: finalUrl,
       platform,
+      enableLinkedNote,
       createdAt: new Date().toISOString()
     };
 
@@ -785,7 +819,30 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {/* Note link direct connect */}
+                  <button
+                    onClick={() => {
+                      const updated = videos.map(v => v.id === vid.id ? { ...v, enableLinkedNote: !v.enableLinkedNote } : v);
+                      onUpdateDb({ videos: updated });
+                    }}
+                    className={`p-1 rounded-lg transition-all cursor-pointer ${
+                      vid.enableLinkedNote ? 'text-amber-550 bg-amber-500/10' : 'text-slate-400 hover:text-slate-700'
+                    }`}
+                    title={vid.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                  >
+                    🔗
+                  </button>
+                  {vid.enableLinkedNote && (
+                    <button
+                      onClick={() => triggerLinkedNote(vid.id, vid.title, 'video')}
+                      className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-305/30 rounded-lg text-amber-600 dark:text-amber-400 font-mono text-[10px] flex items-center gap-1 leading-none cursor-pointer shrink-0"
+                      title="Open connected study note"
+                    >
+                      📝
+                    </button>
+                  )}
+
                   {/* Simple Checkbox Toggle */}
                   <button
                     onClick={() => handleToggleComplete(vid.id)}
@@ -919,6 +976,29 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                 </div>
 
                 <div className="flex items-center gap-4 shrink-0 mt-2 sm:mt-0 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+                  {/* Note link direct connect */}
+                  <button
+                    onClick={() => {
+                      const updated = videos.map(v => v.id === vid.id ? { ...v, enableLinkedNote: !v.enableLinkedNote } : v);
+                      onUpdateDb({ videos: updated });
+                    }}
+                    className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                      vid.enableLinkedNote ? 'text-amber-550 bg-amber-500/10' : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                    title={vid.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                  >
+                    🔗
+                  </button>
+                  {vid.enableLinkedNote && (
+                    <button
+                      onClick={() => triggerLinkedNote(vid.id, vid.title, 'video')}
+                      className="px-3.5 py-1.5 bg-amber-550 hover:bg-amber-600 text-white rounded-xl text-xs font-mono font-bold tracking-wider transition-all cursor-pointer shadow-xs"
+                      title="Open connected study note"
+                    >
+                      📝 Connected Note
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       if (playUrl) {
@@ -941,7 +1021,7 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                       handleToggleComplete(vid.id);
                     }}
                     className={`relative w-9 h-5 rounded-full transition-all duration-155 focus:outline-none cursor-pointer border ${
-                      vid.isCompleted ? 'bg-emerald-500 border-emerald-600' : 'bg-slate-205 dark:bg-slate-805 border-slate-300 dark:border-slate-750'
+                      vid.isCompleted ? 'bg-emerald-500 border-emerald-600' : 'bg-slate-205 dark:bg-slate-805 border-slate-300 dark:border-slate-755'
                     }`}
                   >
                     <div
@@ -1238,6 +1318,15 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
 
                 {/* Bottom Highlighter & Actions line */}
                 <div className="space-y-2.5 pt-1">
+                  {vid.enableLinkedNote && (
+                    <button
+                      onClick={() => triggerLinkedNote(vid.id, vid.title, 'video')}
+                      className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-300/40 text-amber-705 dark:text-amber-300 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                      title="Open connected study notepad"
+                    >
+                      <span>📝 Open Connected Note</span>
+                    </button>
+                  )}
                   {/* Highlighter red button / marker */}
                   <button
                     onClick={() => {
@@ -1280,13 +1369,28 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                       </button>
                     )}
 
-                    <button
-                      onClick={() => handleDeleteItem(vid.id)}
-                      className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Remove Video resource card"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {/* Inline note linkage connection toggle */}
+                      <button
+                        onClick={() => {
+                          const updated = videos.map(v => v.id === vid.id ? { ...v, enableLinkedNote: !v.enableLinkedNote } : v);
+                          onUpdateDb({ videos: updated });
+                        }}
+                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                          vid.enableLinkedNote ? 'text-amber-500 bg-amber-500/10' : 'text-slate-405 dark:text-slate-600 hover:text-slate-700'
+                        }`}
+                        title={vid.enableLinkedNote ? "Disable connected study note link" : "Enable connected study note link"}
+                      >
+                        🔗
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(vid.id)}
+                        className="p-1.5 text-slate-404 hover:text-red-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Remove Video resource card"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1583,6 +1687,21 @@ export function AllVideosView({ dbState, onOpenSubtopic, onUpdateDb }: AllVideos
                         );
                       })}
                     </select>
+                  </div>
+
+                  {/* Connection Checkbox */}
+                  <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 animate-in fade-in">
+                    <input
+                      type="checkbox"
+                      id="videoEnableLinkedNote"
+                      checked={enableLinkedNote}
+                      onChange={(e) => setEnableLinkedNote(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer shrink-0"
+                    />
+                    <label htmlFor="videoEnableLinkedNote" className="text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                      Enable Connected Quick Note 🔗
+                      <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Creates an interactive, context-aware digital notepad on the screen paired with this study video lecture.</span>
+                    </label>
                   </div>
                 </div>
               )}

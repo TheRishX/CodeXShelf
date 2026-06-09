@@ -330,5 +330,67 @@ setInterval(leak, 100); // leakReference grows exponentially
       notes: 'Iterate backwards from Capacity down to item weight to rely on the current step\'s unmutated states!'
     }
   ],
-  quickNotes: []
+  quickNotes: [],
+  streak: {
+    count: 3,
+    lastActiveDate: '2026-06-09'
+  },
+  streakLogs: {
+    '2026-06-08': {
+      text: 'Explored asynchronous runtime closures, practiced Javascript callbacks, and successfully solved 2 medium coding challenges.',
+      questionsSolved: 2,
+      topicsLearned: ['Javascript'],
+      createdAt: '2026-06-08T18:30:00Z'
+    },
+    '2026-06-09': {
+      text: 'Deeply reviewed CSS alignment properties, finished the Flexbox worksheet, and consolidated 1 crucial interview QA session.',
+      questionsSolved: 1,
+      topicsLearned: ['HTML & CSS'],
+      createdAt: '2026-06-09T11:45:00Z'
+    }
+  },
+  books: [
+    {
+      id: 'book-1',
+      title: 'Designing Data-Intensive Applications',
+      author: 'Martin Kleppmann',
+      link: 'https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/',
+      coverUrl: '',
+      notes: 'Superb textbook parsing distributed systems, database storage engines, schemas, partition rules, consensus protocols, and offline scaling architectures.',
+      rating: 5,
+      status: 'reading',
+      totalPages: 610,
+      currentPage: 240,
+      shelfLocation: 'middle',
+      createdAt: '2026-06-05T09:00:00Z'
+    },
+    {
+      id: 'book-2',
+      title: 'Introduction to Algorithms',
+      author: 'Thomas H. Cormen',
+      link: 'https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/',
+      coverUrl: '',
+      notes: 'The definitive tome (CLRS) for analyzing time complexity, topological sort, flow networks, dynamic programming, and heap allocations.',
+      rating: 4,
+      status: 'want_to_read',
+      totalPages: 1312,
+      currentPage: 32,
+      shelfLocation: 'bottom',
+      createdAt: '2026-06-06T10:15:00Z'
+    },
+    {
+      id: 'book-3',
+      title: 'Clean Code',
+      author: 'Robert C. Martin',
+      link: 'https://www.oreilly.com/library/view/clean-code-a/9780136083238/',
+      coverUrl: '',
+      notes: 'A handbook of agile software craftsmanship. Focused on pristine naming layouts, tiny single-purpose function parameters, unit testing setups, and clean object wrappers.',
+      rating: 5,
+      status: 'completed',
+      totalPages: 464,
+      currentPage: 464,
+      shelfLocation: 'top',
+      createdAt: '2026-06-07T11:20:00Z'
+    }
+  ]
 };

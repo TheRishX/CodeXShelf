@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, Layers, BookOpen, FileText, HelpCircle, ArrowRight, CheckCircle2, AlertCircle,
   GraduationCap, Coffee, Code, Database, ChevronRight, PlayCircle, Download, Upload, ShieldAlert,
-  Trash2, Plus, X, ThumbsUp, Check, XCircle, Flame, Zap, RotateCcw, Info, Mic
+  Trash2, Plus, X, ThumbsUp, Check, XCircle, Flame, Zap, RotateCcw, Info, Mic,
+  Calendar, Minus, History, PenTool
 } from 'lucide-react';
 import { DatabaseState, Topic, Subtopic, NoteItem, PdfItem, ConceptItem, VaultItem } from '../types';
 
@@ -162,6 +163,63 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
   const [revealMythSol, setRevealMythSol] = useState(false);
   const [mindBlownCount, setMindBlownCount] = useState<Record<number, boolean>>({});
   const [mythsLearnedTotal, setMythsLearnedTotal] = useState(0);
+
+  // Dynamic 14-day study log tracking states
+  const todayDateStr = (() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })();
+
+  const [selectedLogDate, setSelectedLogDate] = useState<string>(todayDateStr);
+  const [logText, setLogText] = useState('');
+  const [questionsCount, setQuestionsCount] = useState<number>(0);
+  const [selectedTopicTags, setSelectedTopicTags] = useState<string[]>([]);
+  const [logSavedFeedback, setLogSavedFeedback] = useState<boolean>(false);
+
+  // Sync log edits with the active date change
+  useEffect(() => {
+    const existingLog = dbState.streakLogs?.[selectedLogDate];
+    if (existingLog) {
+      setLogText(existingLog.text);
+      setQuestionsCount(existingLog.questionsSolved || 0);
+      setSelectedTopicTags(existingLog.topicsLearned || []);
+    } else {
+      setLogText('');
+      setQuestionsCount(0);
+      setSelectedTopicTags([]);
+    }
+    setLogSavedFeedback(false);
+  }, [selectedLogDate, dbState.streakLogs]);
+
+  const handleSaveStreakLog = (dateStr: string) => {
+    const updatedLogs = { ...(dbState.streakLogs || {}) };
+    
+    if (!logText.trim() && questionsCount === 0 && selectedTopicTags.length === 0) {
+      delete updatedLogs[dateStr];
+    } else {
+      updatedLogs[dateStr] = {
+        text: logText.trim(),
+        questionsSolved: questionsCount,
+        topicsLearned: selectedTopicTags,
+        createdAt: updatedLogs[dateStr]?.createdAt || new Date().toISOString()
+      };
+    }
+
+    onUpdateDb({ streakLogs: updatedLogs });
+    setLogSavedFeedback(true);
+    setTimeout(() => setLogSavedFeedback(false), 2000);
+  };
+
+  const handleDeleteStreakLog = (dateStr: string) => {
+    if (confirm("Are you sure you want to delete this study log entry?")) {
+      const updatedLogs = { ...(dbState.streakLogs || {}) };
+      delete updatedLogs[dateStr];
+      onUpdateDb({ streakLogs: updatedLogs });
+    }
+  };
 
   // Calculate totals
   const totalTopicsCount = topics.length;
@@ -370,17 +428,23 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
                   const dayNum = String(d.getDate());
                   const monthNum = String(d.getMonth() + 1);
                   const formattedDate = `${monthNum}/${dayNum}`;
+                  const yearInstance = d.getFullYear();
+                  const fullDateStr = `${yearInstance}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                   
                   // If we have S days of streak, light up the last S days
                   const isActive = streakCount > 0 && dOffset < streakCount;
                   const isToday = dOffset === 0;
+                  const hasLog = !!dbState.streakLogs?.[fullDateStr];
 
                   return {
                     dOffset,
                     formattedDate,
+                    fullDateStr,
                     isActive,
                     isToday,
+                    hasLog,
                     dayName: d.toLocaleDateString([], { weekday: 'short' }),
+                    fullDateFriendly: d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
                   };
                 });
 
@@ -432,34 +496,49 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
                     {/* 14-day Habit Heat Map Grid */}
                     <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850/60">
                       <p className="text-[10px] font-mono font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none mb-2">
-                        14-Day Micro-Activity Grid
+                        14-Day Micro-Activity Grid (Click day to log text)
                       </p>
                       
                       <div className="grid grid-cols-7 gap-2">
-                        {habitDays.map(day => (
-                          <div 
-                            key={day.dOffset}
-                            className={`aspect-square rounded-lg flex flex-col items-center justify-center relative group cursor-pointer border ${
-                              day.isActive
-                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 border-amber-300 dark:border-orange-500/30 text-slate-900 dark:text-slate-950 font-extrabold shadow-3xs'
-                                : day.isToday
-                                  ? 'bg-slate-550/10 dark:bg-slate-950 border-2 border-dashed border-amber-500/50 text-slate-450 font-bold'
-                                  : 'bg-slate-50/70 dark:bg-slate-950/40 border-slate-200 dark:border-slate-850 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-400'
-                            }`}
-                          >
-                            <span className="text-[9px] font-mono leading-none">
-                              {day.dayName.charAt(0)}
-                            </span>
-                            <span className="text-[7.5px] font-mono mt-0.5 opacity-75">
-                              {day.formattedDate}
-                            </span>
+                        {habitDays.map(day => {
+                          const isSelected = selectedLogDate === day.fullDateStr;
+                          return (
+                            <div 
+                              key={day.dOffset}
+                              onClick={() => setSelectedLogDate(day.fullDateStr)}
+                              className={`aspect-square rounded-xl flex flex-col items-center justify-center relative group cursor-pointer border-2 transition-all ${
+                                isSelected
+                                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20 ring-2 ring-amber-400/20'
+                                  : day.isActive
+                                    ? 'bg-gradient-to-br from-amber-400 to-orange-500 border-amber-300 dark:border-orange-500/30 text-slate-900 dark:text-slate-950 font-extrabold shadow-3xs'
+                                    : day.isToday
+                                      ? 'bg-slate-550/10 dark:bg-slate-950 border-dashed border-amber-500/50 text-slate-450 font-bold'
+                                      : 'bg-slate-50/70 dark:bg-slate-950/40 border-slate-200 dark:border-slate-850 hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-400'
+                              }`}
+                            >
+                              <span className="text-[9px] font-mono leading-none font-bold">
+                                {day.dayName.charAt(0)}
+                              </span>
+                              <span className="text-[8px] font-mono mt-0.5 opacity-80">
+                                {day.formattedDate}
+                              </span>
 
-                            {/* Hover tooltip for positive reinforcement */}
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 bg-slate-950 dark:bg-slate-100 text-slate-100 dark:text-slate-900 text-[10px] px-2.5 py-1 rounded-lg shadow-lg pointer-events-none whitespace-nowrap font-sans font-bold">
-                              {day.isToday ? 'Today' : `${day.formattedDate}`} — {day.isActive ? '🔥 Study Loop Active!' : '⏳ No Activity Logged'}
+                              {/* Glowing log indicator */}
+                              {day.hasLog && (
+                                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm animate-pulse" />
+                              )}
+
+                              {/* Hover tooltip for positive reinforcement */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 bg-slate-950 dark:bg-slate-100 text-slate-100 dark:text-slate-900 text-[10px] px-2.5 py-1.5 rounded-lg shadow-lg pointer-events-none whitespace-nowrap font-sans font-bold leading-none">
+                                {day.fullDateFriendly} {day.isToday ? '(Today)' : ''}
+                                {day.hasLog ? ' • 📝 Logged!' : ''}
+                                <span className="block text-[8px] opacity-75 font-mono mt-1 text-left">
+                                  {day.hasLog ? `"${dbState.streakLogs?.[day.fullDateStr]?.text.slice(0, 30)}..."` : day.isActive ? '🔥 Study Loop Active!' : '⏳ Click to log progress'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono font-medium pt-1.5 leading-none">
@@ -473,6 +552,220 @@ export function Dashboard({ dbState, onSelectView, onOpenSubtopic, onUpdateDb, o
                         <span>Today</span>
                       </div>
                     </div>
+
+                    {/* Date-Specific Study Logging Editor */}
+                    <div className="pt-3 border-t border-slate-150 dark:border-slate-850/60 space-y-3">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-amber-550 dark:text-amber-400 font-mono text-[9.5px] font-bold flex items-center gap-1 border border-amber-200/50 dark:border-amber-950/40">
+                            <Calendar className="w-3.5 h-3.5 text-amber-555" />
+                            <span>
+                              {(() => {
+                                const d = new Date(selectedLogDate + 'T12:00:00');
+                                return d.toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
+                              })()}
+                              {selectedLogDate === todayDateStr ? " (Today)" : ""}
+                            </span>
+                          </div>
+                        </div>
+
+                        {dbState.streakLogs?.[selectedLogDate] && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStreakLog(selectedLogDate)}
+                            className="text-[9.5px] font-bold text-rose-500 hover:text-rose-600 font-mono uppercase cursor-pointer py-1 px-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/15 rounded-md transition-all shrink-0"
+                          >
+                            Delete log
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850/40 p-3 rounded-2xl">
+                        {/* Text Area block */}
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-widest block font-mono">
+                            Activity Notes & Achievements
+                          </label>
+                          <textarea
+                            value={logText}
+                            onChange={(e) => setLogText(e.target.value)}
+                            placeholder="What concepts did you learn, or which questions did you solve on this date?"
+                            className="w-full min-h-[58px] text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl p-2 px-3 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-400 dark:focus:border-amber-500 resize-none font-sans leading-relaxed text-left"
+                          />
+                        </div>
+
+                        {/* Extra parameters: Questions Solved & Topic Pill Selectors */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          {/* Questions counter */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-widest block font-mono">
+                              Questions Solved
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setQuestionsCount(prev => Math.max(0, prev - 1))}
+                                className="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 cursor-pointer active:scale-95 transition-all outline-none"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              
+                              <input
+                                type="number"
+                                min="0"
+                                value={questionsCount === 0 ? '' : questionsCount}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  setQuestionsCount(isNaN(val) ? 0 : Math.max(0, val));
+                                }}
+                                placeholder="0"
+                                className="w-12 h-7 rounded-lg border border-slate-200 dark:border-slate-800 text-center font-mono text-xs bg-white dark:bg-slate-900 focus:outline-none focus:border-amber-400 focus:ring-0 dark:text-white"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => setQuestionsCount(prev => prev + 1)}
+                                className="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 cursor-pointer active:scale-95 transition-all outline-none"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-medium">solved</span>
+                            </div>
+                          </div>
+
+                          {/* Quick Categories Studied */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-widest block font-mono">
+                              Topics Studied
+                            </label>
+                            <div className="flex flex-wrap gap-1 max-h-[46px] overflow-y-auto pr-1">
+                              {topics.map(t => {
+                                const isSelected = selectedTopicTags.includes(t.name);
+                                return (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedTopicTags(prev => prev.filter(name => name !== t.name));
+                                      } else {
+                                        setSelectedTopicTags(prev => [...prev, t.name]);
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-tight uppercase font-mono border transition-all cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 dark:bg-amber-500/20'
+                                        : 'bg-white dark:bg-slate-900 text-slate-450 dark:text-slate-500 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                    }`}
+                                  >
+                                    {t.name}
+                                  </button>
+                                );
+                              })}
+                              {topics.length === 0 && (
+                                <span className="text-[10px] italic text-slate-400 dark:text-slate-500">No active topics found.</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Save Trigger Button */}
+                        <div className="flex items-center justify-between gap-2 border-t border-slate-150 dark:border-slate-850/50 pt-2.5 mt-1.5">
+                          <span className="text-[9.5px] text-slate-400 dark:text-slate-500 italic font-medium leading-none">
+                            {logSavedFeedback ? (
+                              <span className="text-emerald-500 dark:text-emerald-450 font-bold flex items-center gap-1 font-mono">
+                                <Check className="w-3.5 h-3.5" /> Log dynamic entry preserved!
+                              </span>
+                            ) : "Grid select updates notes instantly"}
+                          </span>
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleSaveStreakLog(selectedLogDate)}
+                            className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-550 hover:from-amber-600 hover:to-orange-650 text-white font-bold text-[10.5px] uppercase tracking-wider font-mono shadow-sm active:scale-97 transition-all cursor-pointer select-none"
+                          >
+                            Save Log Entry
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Log History Scrollable Journal list */}
+                    {Object.keys(dbState.streakLogs || {}).length > 0 && (
+                      <div className="pt-3 border-t border-slate-150 dark:border-slate-850/60 space-y-2">
+                        <div className="flex items-center gap-1.5 justify-between">
+                          <p className="text-[10px] font-mono font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-widest leading-none">
+                            📜 Learning History logs
+                          </p>
+                          <span className="text-[9px] font-mono bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-1.5 py-0.5 rounded text-slate-400 font-bold">
+                            {Object.keys(dbState.streakLogs || {}).length} entries
+                          </span>
+                        </div>
+
+                        <div className="max-h-[148px] overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-trigger">
+                          {Object.entries(dbState.streakLogs || {})
+                            .sort((a, b) => b[0].localeCompare(a[0])) // chronological decay
+                            .map(([dateStr, entry]) => {
+                              const d = new Date(dateStr + 'T12:00:00');
+                              const formattedD = d.toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
+                              const isSelected = selectedLogDate === dateStr;
+
+                              return (
+                                <div 
+                                  key={dateStr}
+                                  onClick={() => setSelectedLogDate(dateStr)}
+                                  className={`rounded-xl border p-2.5 text-left transition-all hover:bg-slate-50/50 dark:hover:bg-slate-850/20 cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border-amber-400 dark:border-amber-400/30' 
+                                      : 'bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-850'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-1.5">
+                                    <div className="w-full">
+                                      <span className="text-[9.5px] font-bold text-slate-705 dark:text-slate-300 font-sans block leading-none">
+                                        {formattedD}
+                                        {dateStr === todayDateStr ? " (Today)" : ""}
+                                      </span>
+                                      
+                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans mt-1.5 leading-relaxed">
+                                        {entry.text || <span className="italic text-slate-400">Activity registered (no notes logged)</span>}
+                                      </p>
+
+                                      <div className="flex items-center flex-wrap gap-1.5 mt-2">
+                                        {entry.questionsSolved !== undefined && entry.questionsSolved > 0 && (
+                                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-405 border border-emerald-500/15 text-[8.5px] font-mono leading-none font-bold">
+                                            ✅ {entry.questionsSolved} {entry.questionsSolved === 1 ? 'question' : 'questions'} solved
+                                          </span>
+                                        )}
+
+                                        {(entry.topicsLearned || []).map(topic => (
+                                          <span key={topic} className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-405 border border-blue-500/15 text-[8.5px] font-mono leading-none font-bold uppercase tracking-tight">
+                                            {topic}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedLogDate(dateStr);
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                                        title="Edit this entry"
+                                      >
+                                        <PenTool className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 );

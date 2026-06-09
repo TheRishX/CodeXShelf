@@ -27,6 +27,7 @@ const LOCAL_STORAGE_USER_KEY = 'codexshelf_active_user_v1';
 const LOCAL_STORAGE_THEME_KEY = 'codexshelf_theme_preference_v1';
 
 import { StudyTodoView } from './components/StudyTodoView';
+import { BookshelfView } from './components/BookshelfView';
 
 import { 
   Laptop, BookOpen, CheckSquare, ClipboardList, Flame, Sparkles, Award, X
@@ -59,7 +60,10 @@ const detectNewActivity = (prev: DatabaseState, next: DatabaseState): boolean =>
     const completedAssignments = (state.assignments || []).filter(a => a.status === 'Completed' || a.status === 'Perfected').length;
     const completedTrackers = (state.trackers || []).filter(t => t.completed).length;
     
-    return completedTodos + completedPdfs + readPdfs + completedNotes + readNotes + completedVideos + completedAssignments + completedTrackers;
+    // Include user logs as active study markers
+    const streakLogsCount = Object.keys(state.streakLogs || {}).length;
+    
+    return completedTodos + completedPdfs + readPdfs + completedNotes + readNotes + completedVideos + completedAssignments + completedTrackers + streakLogsCount;
   };
 
   return getCompletedCount(next) > getCompletedCount(prev);
@@ -98,7 +102,14 @@ export default function App() {
   // Can be: 'dashboard'
   // Or: 'topicId' (e.g. 'javascript')
   // Or: 'topicId::subtopicId' (e.g. 'javascript::closures')
-  const [activeView, setActiveView] = useState<string>('dashboard');
+  const [activeView, setActiveView] = useState<string>(() => {
+    return localStorage.getItem('last_active_view') || 'dashboard';
+  });
+
+  // Save active view state transitions to remember what was opened last time
+  useEffect(() => {
+    localStorage.setItem('last_active_view', activeView);
+  }, [activeView]);
 
   // Monitor Firebase Auth session state change
   useEffect(() => {
@@ -532,6 +543,7 @@ export default function App() {
           dbState={dbState}
           onOpenSubtopic={handleOpenSubtopic}
           onUpdateDb={handleUpdateDatabase}
+          onSelectView={setActiveView}
         />
       );
     }
@@ -582,6 +594,7 @@ export default function App() {
           dbState={dbState}
           onOpenSubtopic={handleOpenSubtopic}
           onUpdateDb={handleUpdateDatabase}
+          onSelectView={setActiveView}
         />
       );
     }
@@ -591,6 +604,16 @@ export default function App() {
         <KnowledgeVaultView
           dbState={dbState}
           onUpdateDb={handleUpdateDatabase}
+        />
+      );
+    }
+
+    if (activeView === 'bookshelf') {
+      return (
+        <BookshelfView
+          dbState={dbState}
+          onUpdateDb={handleUpdateDatabase}
+          onSelectView={setActiveView}
         />
       );
     }
@@ -611,6 +634,7 @@ export default function App() {
         <AllAssignmentsView
           dbState={dbState}
           onUpdateDb={handleUpdateDatabase}
+          onSelectView={setActiveView}
         />
       );
     }
@@ -645,6 +669,7 @@ export default function App() {
             isDarkMode={isDarkMode}
             onToggleTheme={handleToggleTheme}
             onDeleteSubtopic={handleDeleteSubtopic}
+            onSelectView={setActiveView}
           />
         );
       }

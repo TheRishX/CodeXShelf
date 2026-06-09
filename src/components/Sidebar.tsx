@@ -158,6 +158,7 @@ export function Sidebar({
   // Configured default menu options available inside the sidebar
   const ALL_POSSIBLE_MENU_ITEMS = [
     { id: 'dashboard', label: 'Dashboard', icon: Compass, colorClass: 'text-blue-650', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-650 dark:text-blue-400 border-blue-650 dark:border-blue-500', desc: 'Main dashboard, study streaks, recently visited subjects and high-yield actions' },
+    { id: 'bookshelf', label: 'Sleek E-Bookshelf', icon: BookOpen, colorClass: 'text-amber-500', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'A modular virtual library rendering physical paperbacks in premium 5D rotational models with annotations and custom cover links' },
     { id: 'topicshelf', label: 'Topicshelf', icon: Layers, colorClass: 'text-blue-650', activeBg: 'bg-blue-50/50 dark:bg-blue-950/10 text-blue-650 dark:text-blue-400 border-blue-650 dark:border-blue-500', desc: 'Symmetrical digital desk representing all study topics & interactive subtopics' },
     { id: 'pdfs', label: 'PDF Reference Links', icon: FileText, colorClass: 'text-indigo-600', activeBg: 'bg-indigo-50/50 dark:bg-indigo-950/10 text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-500', desc: 'Consolidated vault linking direct handbook PDFs, lectures slides & research documents' },
     { id: 'videos', label: 'Videos', icon: Video, colorClass: 'text-emerald-600', activeBg: 'bg-emerald-50/50 dark:bg-emerald-950/10 text-emerald-600 dark:text-emerald-400 border-emerald-600 dark:border-emerald-500', desc: 'Sleek embedded video player playlist linking reference links to AI note generator' },
@@ -170,7 +171,7 @@ export function Sidebar({
     { id: 'notes', label: 'Topic Notes Scratchpads', icon: FileText, colorClass: 'text-slate-600', activeBg: 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-350 border-slate-400 dark:border-slate-500', desc: 'Isolated quick notes lists across all active subtopic modules' },
     { id: 'coding', label: 'Sandbox Labs', icon: Code, colorClass: 'text-amber-600', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'Interactive developer sandbox for syntax structures & programmatic practice tests' },
     { id: 'interviews', label: 'Simulation Interviews', icon: BrainCircuit, colorClass: 'text-teal-600', activeBg: 'bg-teal-50/50 dark:bg-teal-950/10 text-teal-600 dark:text-teal-450 border-teal-600 dark:border-teal-500', desc: 'Simulated system interview scenario lists sorted by role target tiers' },
-    { id: 'quizzes', label: 'Assessment Arena', icon: Cpu, colorClass: 'text-cyan-600', activeBg: 'bg-cyan-50/50 dark:bg-cyan-950/10 text-cyan-650 dark:text-cyan-400 border-cyan-600 dark:border-cyan-500', desc: 'Active recall multiple-choice question arrays center with explanation sheets' }
+    { id: 'quizzes', label: 'Assessment Arena', icon: Cpu, colorClass: 'text-cyan-600', activeBg: 'bg-cyan-50/50 dark:bg-cyan-955/10 text-cyan-655 dark:text-cyan-400 border-cyan-600 dark:border-cyan-500', desc: 'Active recall multiple-choice question arrays center with explanation sheets' }
   ];
 
   const DEFAULT_MENU_ITEMS = ALL_POSSIBLE_MENU_ITEMS.map(item => ({
@@ -178,10 +179,14 @@ export function Sidebar({
     label: customMenuLabels?.[item.id] || item.label
   }));
 
-  const defaultSidebarItems = ['dashboard', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
-  const currentActiveSidebarItems = activeSidebarItems && activeSidebarItems.length > 0
+  const defaultSidebarItems = ['dashboard', 'bookshelf', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
+  let currentActiveSidebarItems = activeSidebarItems && activeSidebarItems.length > 0
     ? activeSidebarItems
     : defaultSidebarItems;
+
+  if (activeSidebarItems && activeSidebarItems.length > 0 && !activeSidebarItems.includes('bookshelf')) {
+    currentActiveSidebarItems = [...activeSidebarItems, 'bookshelf'];
+  }
 
   const sidebarLinksList = sidebarOrder && sidebarOrder.length > 0
     ? [...sidebarOrder]

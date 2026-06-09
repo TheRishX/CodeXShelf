@@ -19,6 +19,7 @@ interface SubtopicViewProps {
   isDarkMode?: boolean;
   onToggleTheme?: () => void;
   onDeleteSubtopic?: (subtopicId: string) => void;
+  onSelectView?: (view: string) => void;
 }
 
 type TabType = 'dashboard' | 'tracker' | 'pdfs' | 'notes' | 'videos' | 'concepts' | 'quizzes';
@@ -179,7 +180,8 @@ export function SubtopicView({
   onUpdateDb,
   isDarkMode = true,
   onToggleTheme,
-  onDeleteSubtopic
+  onDeleteSubtopic,
+  onSelectView
 }: SubtopicViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('pdfs');
   const [tabManagerOpen, setTabManagerOpen] = useState(false);

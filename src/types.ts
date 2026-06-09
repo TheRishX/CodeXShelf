@@ -30,6 +30,7 @@ export interface PdfItem {
   needsRevision?: boolean;
   lastOpenedAt?: string;
   status?: 'unseen' | 'reading' | 'completed' | 'revision';
+  enableLinkedNote?: boolean;
 }
 
 export interface NoteItem {
@@ -55,6 +56,9 @@ export interface QuickNoteItem {
   isPinned?: boolean;
   isFavorite?: boolean;
   color?: string;
+  linkedResourceId?: string;
+  linkedResourceType?: 'book' | 'assignment' | 'pdf' | 'video';
+  linkedResourceTitle?: string;
 }
 
 export interface VideoItem {
@@ -66,6 +70,7 @@ export interface VideoItem {
   createdAt: string;
   isPlaying?: boolean;
   isCompleted?: boolean;
+  enableLinkedNote?: boolean;
 }
 
 export interface ConceptItem {
@@ -137,13 +142,17 @@ export interface AssignmentItem {
   id: string;
   title: string;
   description: string;
-  paperUrl: string; // PDF / paper link
+  paperUrl?: string; // PDF / paper link
   websiteUrl: string; // Web link where questions reside
+  localPdfData?: string; // Base64 local file data (offline option)
+  localPdfName?: string;
+  localPdfSize?: string;
   status: 'Awaiting Solution' | 'In Progress' | 'Completed' | 'Perfected';
   notes?: string;
   createdAt: string;
   isPinned?: boolean;
   isSolving?: boolean;
+  enableLinkedNote?: boolean;
 }
 
 export interface StudyTodoItem {
@@ -158,6 +167,27 @@ export interface StudyTodoItem {
   completedAt?: string;
   notes?: string; // psychological takeaways for consolidation
   difficultyEstimate?: 'quick_win' | 'deep_analytical' | 'epic_conceptual';
+}
+
+export interface BookItem {
+  id: string;
+  title: string;
+  author?: string;
+  link?: string;
+  localPdfData?: string; // Base64 local file data (offline option)
+  localPdfName?: string;
+  localPdfSize?: string;
+  coverUrl?: string; // Web URL or Base64 data
+  notes?: string;
+  rating?: number; // 0-5
+  status: 'want_to_read' | 'reading' | 'completed';
+  totalPages?: number;
+  currentPage?: number;
+  shelfLocation?: string; // 'top' | 'middle' | 'bottom'
+  createdAt: string;
+  isReadingActive?: boolean;
+  lastOpenedAt?: string;
+  enableLinkedNote?: boolean;
 }
 
 export interface DatabaseState {
@@ -176,10 +206,20 @@ export interface DatabaseState {
   assignments?: AssignmentItem[];
   todos?: StudyTodoItem[];
   quickNotes?: QuickNoteItem[];
+  books?: BookItem[];
+  bookshelfViewMode?: 'shelf' | 'grid' | 'list' | 'compact';
+  bookshelfSortBy?: 'manual' | 'date' | 'alpha' | 'progress';
+  bookshelfLastReadId?: string;
   streak?: {
     count: number;
     lastActiveDate: string;
   };
+  streakLogs?: Record<string, {
+    text: string;
+    questionsSolved?: number;
+    topicsLearned?: string[];
+    createdAt?: string;
+  }>;
   sidebarOrder?: string[];
   customMenuLabels?: Record<string, string>;
   activeSidebarItems?: string[];

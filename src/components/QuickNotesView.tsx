@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Sparkles, Plus, Trash2, Search, Pin, Star, Mic, MicOff, Check, CornerDownRight, ListFilter, Calendar
+  Sparkles, Plus, Trash2, Search, Pin, Star, Mic, MicOff, Check, CornerDownRight, ListFilter, Calendar,
+  Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, 
+  CheckSquare, Palette, Eraser, Type, ChevronDown
 } from 'lucide-react';
 import { DatabaseState, QuickNoteItem } from '../types';
 
@@ -18,6 +20,33 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'pinned' | 'favorites'>('all');
 
+  // Rich Text Editor formatting state trackings
+  const [activeFontFamily, setActiveFontFamily] = useState('sans-serif');
+  const [activeFontSize, setActiveFontSize] = useState('3'); // 3 corresponds to 16px
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const [showHighlightColorPicker, setShowHighlightColorPicker] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const TEXT_COLORS = [
+    { label: 'Charcoal', value: '#1e293b', bgClass: 'bg-slate-800' },
+    { label: 'Royal Purple', value: '#7c3aed', bgClass: 'bg-violet-600' },
+    { label: 'Sapphire Blue', value: '#2563eb', bgClass: 'bg-blue-600' },
+    { label: 'Forest Green', value: '#059669', bgClass: 'bg-emerald-600' },
+    { label: 'Vibrant Amber', value: '#d97706', bgClass: 'bg-amber-600' },
+    { label: 'Crimson Flame', value: '#dc2626', bgClass: 'bg-red-600' },
+    { label: 'Silver Mist', value: '#94a3b8', bgClass: 'bg-slate-400' },
+    { label: 'Pure White', value: '#ffffff', bgClass: 'bg-white border' },
+  ];
+
+  const HIGHLIGHT_COLORS = [
+    { label: 'None', value: 'transparent', bgClass: 'bg-transparent border border-dashed border-slate-350' },
+    { label: 'Yellow Accent', value: '#fef08a', bgClass: 'bg-yellow-200' },
+    { label: 'Mint Accent', value: '#bbf7d0', bgClass: 'bg-green-200' },
+    { label: 'Sky Accent', value: '#bfdbfe', bgClass: 'bg-blue-200' },
+    { label: 'Peachy Accent', value: '#fbcfe8', bgClass: 'bg-pink-100' },
+    { label: 'Lilac Accent', value: '#e9d5ff', bgClass: 'bg-purple-200' },
+  ];
+
   // Speech Recognition state
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
@@ -25,6 +54,49 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   const SpeechRecognitionClass = typeof window !== 'undefined' 
     ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) 
     : null;
+
+  const handleUpdateNoteField = (id: string, field: keyof QuickNoteItem, value: any) => {
+    const updatedNotes = quickNotes.map(n => {
+      if (n.id === id) {
+        return {
+          ...n,
+          [field]: value,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return n;
+    });
+
+    onUpdateDb({ quickNotes: updatedNotes });
+  };
+
+  const handleEditorInput = () => {
+    if (editorRef.current && selectedNoteId) {
+      const htmlValue = editorRef.current.innerHTML;
+      
+      // Auto-extract content title if title is unassigned or default
+      const rawText = editorRef.current.innerText || '';
+      const lines = rawText.trim().split('\n');
+      const firstLine = lines[0] ? lines[0].substring(0, 40) : '';
+      
+      const currentNote = quickNotes.find(n => n.id === selectedNoteId);
+      const isUntitled = !currentNote || !currentNote.title || currentNote.title.startsWith('Untitled Note') || currentNote.title.trim() === '';
+      const updatedTitle = isUntitled ? (firstLine || 'Untitled Note') : currentNote.title;
+
+      const updatedNotes = quickNotes.map(n => {
+        if (n.id === selectedNoteId) {
+          return {
+            ...n,
+            title: updatedTitle,
+            content: htmlValue,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return n;
+      });
+      onUpdateDb({ quickNotes: updatedNotes });
+    }
+  };
 
   useEffect(() => {
     if (SpeechRecognitionClass) {
@@ -53,10 +125,22 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
           .join('');
         
         if (transcript && selectedNoteId) {
-          handleUpdateNoteContent(selectedNoteId, (prev) => {
-            const separator = prev ? ' ' : '';
-            return prev + separator + transcript;
-          });
+          if (editorRef.current) {
+            editorRef.current.focus();
+            const textNode = document.createTextNode(' ' + transcript);
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+              const range = sel.getRangeAt(0);
+              range.insertNode(textNode);
+              range.setStartAfter(textNode);
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            } else {
+              editorRef.current.appendChild(textNode);
+            }
+            handleEditorInput();
+          }
         }
       };
 
@@ -81,45 +165,75 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
     }
   };
 
-  // Helper to update active note fields
-  const handleUpdateNoteField = (id: string, field: keyof QuickNoteItem, value: any) => {
-    const updatedNotes = quickNotes.map(n => {
-      if (n.id === id) {
-        return {
-          ...n,
-          [field]: value,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return n;
-    });
-
-    onUpdateDb({ quickNotes: updatedNotes });
+  const execEditorCommand = (command: string, value: string = '') => {
+    document.execCommand(command, false, value);
+    handleEditorInput();
   };
 
-  // Helper handling functional updates to note content (used for voice transcription)
-  const handleUpdateNoteContent = (id: string, updateFn: (prev: string) => string) => {
-    const updatedNotes = quickNotes.map(n => {
-      if (n.id === id) {
-        const newContent = updateFn(n.content);
-        // Auto-generate title if title is empty or default
-        const lines = newContent.trim().split('\n');
-        const firstLine = lines[0] ? lines[0].substring(0, 40) : '';
-        const updatedTitle = (!n.title || n.title.startsWith('Untitled Note') || n.title.trim() === '')
-          ? (firstLine || 'Untitled Note')
-          : n.title;
-
-        return {
-          ...n,
-          title: updatedTitle,
-          content: newContent,
-          updatedAt: new Date().toISOString()
-        };
+  const insertHtmlAtCursor = (html: string) => {
+    const sel = window.getSelection();
+    if (sel && sel.getRangeAt && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      
+      const el = document.createElement("div");
+      el.innerHTML = html;
+      const frag = document.createDocumentFragment();
+      let node;
+      let lastNode;
+      while ((node = el.firstChild)) {
+        lastNode = frag.appendChild(node);
       }
-      return n;
-    });
+      range.insertNode(frag);
+      if (lastNode) {
+        const nextRange = range.cloneRange();
+        nextRange.setStartAfter(lastNode);
+        nextRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(nextRange);
+      }
+    } else if (editorRef.current) {
+      const el = document.createElement("div");
+      el.innerHTML = html;
+      editorRef.current.appendChild(el);
+    }
+  };
 
-    onUpdateDb({ quickNotes: updatedNotes });
+  const handleAddChecklistItem = () => {
+    const checklistHtml = `
+      <div style="margin-top: 0.35rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;" contenteditable="true">
+        <input type="checkbox" style="width: 1.15rem; height: 1.15rem; border-radius: 4px; border: 1.5px solid #d1d5db; accent-color: #fbbf24; cursor: pointer; margin: 0; flex-shrink: 0;" />
+        <span style="flex: 1; outline: none; margin-left: 0.25rem;">📝 Task Item</span>
+      </div>
+    `;
+    insertHtmlAtCursor(checklistHtml);
+    handleEditorInput();
+  };
+
+  const handleFontChange = (font: string) => {
+    setActiveFontFamily(font);
+    execEditorCommand('fontName', font);
+  };
+
+  const handleFontSizeChange = (size: string) => {
+    setActiveFontSize(size);
+    execEditorCommand('fontSize', size);
+  };
+
+  const handleIncreaseFontSize = () => {
+    const currentVal = parseInt(activeFontSize);
+    if (currentVal < 7) {
+      const nextVal = (currentVal + 1).toString();
+      handleFontSizeChange(nextVal);
+    }
+  };
+
+  const handleDecreaseFontSize = () => {
+    const currentVal = parseInt(activeFontSize);
+    if (currentVal > 1) {
+      const nextVal = (currentVal - 1).toString();
+      handleFontSizeChange(nextVal);
+    }
   };
 
   const handleCreateNewNote = () => {
@@ -180,6 +294,26 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
       if (!a.isPinned && b.isPinned) return 1;
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
+
+  // Sync selected note ID changes to contenteditor once
+  useEffect(() => {
+    if (editorRef.current && activeNote) {
+      if (editorRef.current.innerHTML !== activeNote.content) {
+        editorRef.current.innerHTML = activeNote.content || '';
+      }
+    }
+  }, [selectedNoteId]);
+
+  // Sync state cleanly when not focused (for cloud synchronization)
+  useEffect(() => {
+    if (editorRef.current && activeNote) {
+      if (editorRef.current.innerHTML !== activeNote.content) {
+        if (document.activeElement !== editorRef.current) {
+          editorRef.current.innerHTML = activeNote.content || '';
+        }
+      }
+    }
+  }, [activeNote]);
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 text-left animate-in fade-in duration-300">
@@ -298,9 +432,13 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                   day: 'numeric'
                 });
                 
-                // Get a preview snippet of the content
-                const cleanedContent = note.content.trim().replace(/\n/g, ' ');
-                const snippet = cleanedContent || 'No additional text';
+                // Get a preview snippet of the content (strip HTML tags first)
+                const plainText = note.content
+                  .replace(/<[^>]*>/g, ' ')
+                  .replace(/&nbsp;/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                const snippet = plainText || 'No additional text';
 
                 return (
                   <button
@@ -457,31 +595,454 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
               </div>
 
               {/* Editor Workspace */}
-              <div className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto">
-                <input
-                  type="text"
-                  placeholder="Give your note a title..."
-                  value={activeNote.title === 'Untitled Note' ? '' : activeNote.title}
-                  onChange={(e) => handleUpdateNoteField(activeNote.id, 'title', e.target.value)}
-                  className="w-full bg-transparent text-slate-900 dark:text-white text-lg font-extrabold tracking-tight focus:outline-none placeholder-slate-350 dark:placeholder-slate-600 font-sans"
-                />
-
-                <div className="flex-1 flex flex-col relative">
-                  <textarea
-                    placeholder="Start typing your floating universal quick note here..."
-                    value={activeNote.content}
-                    onChange={(e) => handleUpdateNoteField(activeNote.id, 'content', e.target.value)}
-                    className="flex-1 w-full bg-transparent text-slate-800 dark:text-slate-200 text-sm leading-relaxed focus:outline-none placeholder-slate-300 dark:placeholder-slate-700 resize-none font-sans"
+              <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+                
+                {/* Note Title Input with beautiful framing */}
+                <div className="px-6 pt-5 pb-2">
+                  <input
+                    type="text"
+                    placeholder="Give your note a title..."
+                    value={activeNote.title === 'Untitled Note' ? '' : activeNote.title}
+                    onChange={(e) => handleUpdateNoteField(activeNote.id, 'title', e.target.value)}
+                    className="w-full bg-transparent text-slate-900 dark:text-white text-xl font-extrabold tracking-tight focus:outline-none placeholder-slate-350 dark:placeholder-slate-600 font-sans"
                   />
+                </div>
+
+                {/* Dynamic Bidirectional Connection Link bar */}
+                <div className="mx-6 my-2 p-2.5 rounded-2xl bg-amber-500/[0.04] border border-amber-500/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs animate-in slide-in-from-top-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm select-none">🔗</span>
+                    <span className="font-extrabold text-slate-700 dark:text-slate-200">Connected Study Resource:</span>
+                    {activeNote.linkedResourceId ? (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/30 text-amber-800 dark:text-amber-300 rounded-lg text-[11px] font-bold">
+                        <span className="uppercase font-mono text-[9px] bg-amber-500/15 px-1 py-0.2 rounded font-black text-amber-755 dark:text-amber-300">
+                          {activeNote.linkedResourceType}
+                        </span>
+                        <span className="truncate max-w-[150px]">{activeNote.linkedResourceTitle}</span>
+                        <button
+                          onClick={() => {
+                            handleUpdateNoteField(activeNote.id, 'linkedResourceId', undefined);
+                            handleUpdateNoteField(activeNote.id, 'linkedResourceType', undefined);
+                            handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', undefined);
+                          }}
+                          className="hover:bg-amber-200 dark:hover:bg-amber-900/65 p-0.5 rounded text-amber-900 dark:text-amber-300 font-bold ml-1 cursor-pointer"
+                          title="Remove study connection"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 font-medium">Unlinked note (offline standalone)</span>
+                    )}
+                  </div>
+
+                  {/* Select Resource to Bind */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase font-mono">Assign connection:</span>
+                    <select
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const [type, id, title] = e.target.value.split('|');
+                        handleUpdateNoteField(activeNote.id, 'linkedResourceId', id);
+                        handleUpdateNoteField(activeNote.id, 'linkedResourceType', type as any);
+                        handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', title);
+                        e.target.value = ''; // reset selection
+                      }}
+                      className="text-[10.5px] font-mono font-bold bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer py-1.5"
+                    >
+                      <option value="">-- Connect with Study Material --</option>
+                               {/* PDF List */}
+                      {dbState.pdfs && dbState.pdfs.length > 0 && (
+                        <optgroup label="PDFs & Texts" className="bg-white dark:bg-slate-900">
+                          {dbState.pdfs.map(p => (
+                            <option key={p.id} value={`pdf|${p.id}|${p.title}`}>
+                              📄 {p.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {/* Assignment List */}
+                      {dbState.assignments && dbState.assignments.length > 0 && (
+                        <optgroup label="Assignments & Notebooks" className="bg-white dark:bg-slate-900">
+                          {dbState.assignments.map(a => (
+                            <option key={a.id} value={`assignment|${a.id}|${a.title}`}>
+                              📂 {a.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {/* Books List */}
+                      {dbState.books && dbState.books.length > 0 && (
+                        <optgroup label="Books" className="bg-white dark:bg-slate-900">
+                          {dbState.books.map(b => (
+                            <option key={b.id} value={`book|${b.id}|${b.title}`}>
+                              📚 {b.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {/* Videos List */}
+                      {dbState.videos && dbState.videos.length > 0 && (
+                        <optgroup label="Videos & Lectures" className="bg-white dark:bg-slate-900">
+                          {dbState.videos.map(v => (
+                            <option key={v.id} value={`video|${v.id}|${v.title}`}>
+                              📺 {v.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Google Docs Style Rich Formatting Toolbar */}
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 dark:bg-slate-950/40 border-y border-slate-150 dark:border-slate-850 select-none">
                   
+                  {/* Font Selection Dropdown */}
+                  <div className="relative flex items-center">
+                    <select
+                      value={activeFontFamily}
+                      onChange={(e) => handleFontChange(e.target.value)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="text-[11px] font-mono font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 px-2 py-1 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer uppercase tracking-wider h-8"
+                    >
+                      <option value="Inter, sans-serif">📂 Modern Sans</option>
+                      <option value="'Playfair Display', Georgia, serif">📚 Elegant Serif</option>
+                      <option value="'JetBrains Mono', monospace">💻 Tech Mono</option>
+                      <option value="'Comic Sans MS', cursive">🎨 Playful Script</option>
+                      <option value="Impact, sans-serif">🔥 Sharp Bold</option>
+                    </select>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* Font Size Preset Dropdown */}
+                  <div className="relative flex items-center">
+                    <select
+                      value={activeFontSize}
+                      onChange={(e) => handleFontSizeChange(e.target.value)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="text-[11px] font-mono font-bold bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 px-2 py-1 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer tracking-wider h-8"
+                    >
+                      <option value="1">10px Mini</option>
+                      <option value="2">13px Small</option>
+                      <option value="3">16px Normal</option>
+                      <option value="4">18px Large</option>
+                      <option value="5">24px Medium Title</option>
+                      <option value="6">32px Large Title</option>
+                      <option value="7">48px Display</option>
+                    </select>
+                  </div>
+
+                  {/* Font Size Steppers */}
+                  <div className="flex items-center rounded-lg border border-slate-205 dark:border-slate-800 bg-white dark:bg-slate-900 h-8">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleDecreaseFontSize();
+                      }}
+                      title="Decrease font size"
+                      className="px-2 py-1 h-full hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono font-bold text-xs border-r border-slate-200 dark:border-slate-800 cursor-pointer"
+                    >
+                      A-
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleIncreaseFontSize();
+                      }}
+                      title="Increase font size"
+                      className="px-2 py-1 h-full hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono font-bold text-xs cursor-pointer"
+                    >
+                      A+
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* Bold, Italic, Underline, Strikethrough buttons */}
+                  <div className="flex items-center gap-0.5 rounded-lg border border-slate-205 dark:border-slate-800 bg-white dark:bg-slate-900 p-0.5 h-8">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('bold');
+                      }}
+                      title="Bold text"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-extrabold cursor-pointer h-full flex items-center"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('italic');
+                      }}
+                      title="Italic text"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 italic cursor-pointer h-full flex items-center"
+                    >
+                      <Italic className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('underline');
+                      }}
+                      title="Underline text"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 underline cursor-pointer h-full flex items-center"
+                    >
+                      <Underline className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('strikeThrough');
+                      }}
+                      title="Strikethrough text"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 line-through cursor-pointer h-full flex items-center"
+                    >
+                      <Strikethrough className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* Alignments */}
+                  <div className="flex items-center gap-0.5 rounded-lg border border-slate-205 dark:border-slate-800 bg-white dark:bg-slate-900 p-0.5 h-8">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('justifyLeft');
+                      }}
+                      title="Align left"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                    >
+                      <AlignLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('justifyCenter');
+                      }}
+                      title="Align center"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                    >
+                      <AlignCenter className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('justifyRight');
+                      }}
+                      title="Align right"
+                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                    >
+                      <AlignRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* Text Color Picker & Highlight Color Picker Buttons with Nice Popups */}
+                  <div className="flex items-center gap-1.5">
+                    
+                    {/* Text Color Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowTextColorPicker(!showTextColorPicker);
+                          setShowHighlightColorPicker(false);
+                        }}
+                        title="Change text color"
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-205 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900 text-[10.5px] font-mono font-bold text-slate-750 dark:text-slate-300 cursor-pointer select-none h-8"
+                      >
+                        <Palette className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span>Color</span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </button>
+
+                      {showTextColorPicker && (
+                        <div className="absolute left-0 mt-1 p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 grid grid-cols-4 gap-1.5 w-48">
+                          <div className="col-span-4 text-[9px] font-mono font-extrabold uppercase text-slate-400 border-b border-slate-100 pb-1 mb-1">
+                            Choose Color
+                          </div>
+                          {TEXT_COLORS.map((color) => (
+                            <button
+                              key={color.value}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                execEditorCommand('foreColor', color.value);
+                                setShowTextColorPicker(false);
+                              }}
+                              title={color.label}
+                              className={`w-8 h-8 rounded-lg cursor-pointer hover:scale-110 transition-transform ${color.bgClass}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Highlight Color Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowHighlightColorPicker(!showHighlightColorPicker);
+                          setShowTextColorPicker(false);
+                        }}
+                        title="Highlight selected text"
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-205 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900 text-[10.5px] font-mono font-bold text-slate-755 dark:text-slate-300 cursor-pointer select-none h-8"
+                      >
+                        <Type className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                        <span>Highlight</span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </button>
+
+                      {showHighlightColorPicker && (
+                        <div className="absolute left-0 mt-1 p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 grid grid-cols-3 gap-1.5 w-44">
+                          <div className="col-span-3 text-[9px] font-mono font-extrabold uppercase text-slate-400 border-b border-slate-100 pb-1 mb-1">
+                            Choose Highlight
+                          </div>
+                          {HIGHLIGHT_COLORS.map((color) => (
+                            <button
+                              key={color.value}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                execEditorCommand('hiliteColor', color.value);
+                                execEditorCommand('backColor', color.value);
+                                setShowHighlightColorPicker(false);
+                              }}
+                              title={color.label}
+                              className={`h-8 rounded-lg cursor-pointer hover:scale-105 transition-transform text-[9px] font-mono font-bold leading-none ${color.bgClass}`}
+                            >
+                              {color.value === 'transparent' ? 'None' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* Lists & Checkboxes */}
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 p-0.5 rounded-lg h-8">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('insertUnorderedList');
+                      }}
+                      title="Bullet List"
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        execEditorCommand('insertOrderedList');
+                      }}
+                      title="Numbered List"
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                    >
+                      <ListOrdered className="w-3.5 h-3.5" />
+                    </button>
+                    
+                    {/* Unique Checklist Row Task generator */}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleAddChecklistItem();
+                      }}
+                      title="Add Interactive Checkbox To-Do Row"
+                      className="p-1 px-1.5 hover:bg-amber-500/10 text-amber-650 dark:text-amber-400 rounded text-[10px] font-mono font-black flex items-center gap-1 cursor-pointer h-full"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span>+ Checklist</span>
+                    </button>
+                  </div>
+
+                  {/* Eraser */}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      execEditorCommand('removeFormat');
+                    }}
+                    title="Clear Formatting"
+                    className="ml-auto p-1.5 rounded-lg border border-slate-200 dark:border-slate-850 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-500 cursor-pointer h-8 flex items-center justify-center animate-none"
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                  </button>
+
+                </div>
+
+                {/* Main Text Editor Workspace (With native contentEditable and active placeholders) */}
+                <div className="flex-1 p-6 overflow-y-auto relative outline-none bg-slate-50 dark:bg-slate-950 flex justify-center">
+                  
+                  {/* Styled physical paper sheet document mockup */}
+                  <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-8 relative min-h-[500px] flex flex-col text-slate-800 dark:text-slate-200 animate-in fade-in-50 duration-500">
+                    
+                    {(!activeNote.content || activeNote.content === '<br>' || activeNote.content === '<div><br></div>' || activeNote.content === '') && (
+                      <div className="absolute left-[32px] top-[32px] right-[32px] text-slate-400 dark:text-slate-600 text-sm pointer-events-none select-none font-sans leading-relaxed">
+                        Start typing your floating study note here... Feel free to change text alignments, select custom fonts, size and highlighters, or structure interactive checklists for tracking curriculum assignments!
+                      </div>
+                    )}
+
+                    <div
+                      ref={editorRef}
+                      contentEditable
+                      onInput={handleEditorInput}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
+                          const checkbox = target as HTMLInputElement;
+                          // Mirror state changes inside the editable HTML
+                          if (checkbox.checked) {
+                            checkbox.setAttribute('checked', 'checked');
+                          } else {
+                            checkbox.removeAttribute('checked');
+                          }
+                          handleEditorInput();
+                        }
+                      }}
+                      className="w-full bg-transparent text-slate-800 dark:text-slate-200 text-[14px] sm:text-[15px] leading-relaxed focus:outline-none min-h-[440px] outline-none select-text editor-area font-sans"
+                      style={{ minHeight: '440px', outline: 'none' }}
+                    />
+                  </div>
+
                   {/* Subtle voice typing feedback overlay */}
                   {isListening && (
-                    <div className="absolute bottom-2 right-2 px-3 py-1 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-mono font-bold flex items-center gap-1.5 animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                      Speak now — transcribing live into active note
+                    <div className="absolute bottom-6 right-6 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-mono font-bold flex items-center gap-1.5 animate-pulse shadow-md bg-white dark:bg-slate-900">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                      Speech Active — transcribing at cursor point
                     </div>
                   )}
                 </div>
+
               </div>
 
               {/* Status Bar */}
