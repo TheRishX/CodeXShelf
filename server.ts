@@ -315,6 +315,82 @@ Avoid dry or generic summaries. Craft deep senior-level insight with complete co
   }
 });
 
+// AI Rich-Text Note Polisher and Enterprise Enhancement Endpoint
+app.post("/api/gemini/polish", async (req, res) => {
+  const { content, mode } = req.body;
+
+  if (!ai) {
+    return res.status(503).json({
+      success: false,
+      error: "Gemini AI client is not configured. Please add your GEMINI_API_KEY in Settings."
+    });
+  }
+
+  if (!content) {
+    return res.status(400).json({ success: false, error: "Missing content payload to polish." });
+  }
+
+  try {
+    let prompt = "";
+    if (mode === "summarize") {
+      prompt = `You are an elite research note summary architect. Take the following HTML content from a technical study note and generate an elegant executive summary block. At the end, compile the absolute top "Golden Takeaways" in clean bullet-points.
+      
+      CRITICAL INSTRUCTION: Return ONLY clean, beautifully formatted raw HTML. Do NOT wrap your output in standard markdown \`\`\`html code blocks. Return ONLY legal HTML tags (like headings, bold, standard lists, paragraph markers) fit to be injected directly inside a contentEditable document editor div.
+
+      Input study note content:
+      ${content}
+      `;
+    } else if (mode === "checklist") {
+      prompt = `You are a curriculum coordinator. Take this technical study notepad content and identify all implied action items, practice tasks, concepts to research, or coding projects mentioned. Restructure them into a comprehensive series of actionable checklist items.
+      
+      CRITICAL INSTRUCTION: Return ONLY clean raw HTML where each checklist item is formatted exactly like our system design:
+      <div style="margin-top: 0.35rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;" contenteditable="true">
+        <input type="checkbox" style="width: 1.15rem; height: 1.15rem; border-radius: 4px; border: 1.5px solid #d1d5db; accent-color: #fbbf24; cursor: pointer; margin: 0; flex-shrink: 0;" />
+        <span style="flex: 1; outline: none; margin-left: 0.25rem;">[Core Task Title]</span>
+      </div>
+      Do NOT wrap your output in markdown \`\`\`html blocks. Return ONLY the raw HTML checklist list. 
+      Ensure tasks cover all technical aspects mentioned.
+
+      Input study note content:
+      ${content}
+      `;
+    } else {
+      // Default: polish
+      prompt = `You are an elite, academy-level technical editor and academic editor. Review the following HTML study node. Polish any spelling or grammatical issues, organize information into balanced headings, format key terms or code keywords so they look clear using code font markers or bold text, and dramatically enhance the formatting, alignment, and structure to look extremely clean, mature, and professional. Keep all source content intact.
+      
+      CRITICAL INSTRUCTION: Return ONLY clean, beautifully formatted raw HTML. Do NOT wrap your output in standard markdown \`\`\`html blocks. Return ONLY raw legal HTML tags.
+
+      Input study note content:
+      ${content}
+      `;
+    }
+
+    const response = await generateWithRetry({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+    });
+
+    let cleanedHtml = (response.text || "").trim();
+    
+    // Safety clean: strip markdown code blocks if the model ignored instructions
+    if (cleanedHtml.startsWith("```html")) {
+      cleanedHtml = cleanedHtml.substring(7);
+    } else if (cleanedHtml.startsWith("```")) {
+      cleanedHtml = cleanedHtml.substring(3);
+    }
+    if (cleanedHtml.endsWith("```")) {
+      cleanedHtml = cleanedHtml.substring(0, cleanedHtml.length - 3);
+    }
+    cleanedHtml = cleanedHtml.trim();
+
+    return res.json({ success: true, result: cleanedHtml });
+
+  } catch (error: any) {
+    console.error("Note Polishing Error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to process note alignment with AI." });
+  }
+});
+
 // 4. YouTube Playlist Scraper with Intel Fallback
 app.get("/api/youtube/playlist", async (req, res) => {
   const listIdQuery = req.query.list || req.query.playlistId || req.query.playlistUrl;

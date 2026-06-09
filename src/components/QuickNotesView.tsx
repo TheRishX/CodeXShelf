@@ -27,6 +27,17 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   const [showHighlightColorPicker, setShowHighlightColorPicker] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
+  // Enterprise formatting & AI state helpers
+  const [isBoldActive, setIsBoldActive] = useState(false);
+  const [isItalicActive, setIsItalicActive] = useState(false);
+  const [isUnderlineActive, setIsUnderlineActive] = useState(false);
+  const [isStrikeActive, setIsStrikeActive] = useState(false);
+  const [isAlignLeftActive, setIsAlignLeftActive] = useState(false);
+  const [isAlignCenterActive, setIsAlignCenterActive] = useState(false);
+  const [isAlignRightActive, setIsAlignRightActive] = useState(false);
+  const [isPolishingNote, setIsPolishingNote] = useState(false);
+  const [showAiDropdown, setShowAiDropdown] = useState(false);
+
   const TEXT_COLORS = [
     { label: 'Charcoal', value: '#1e293b', bgClass: 'bg-slate-800' },
     { label: 'Royal Purple', value: '#7c3aed', bgClass: 'bg-violet-600' },
@@ -168,6 +179,26 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   const execEditorCommand = (command: string, value: string = '') => {
     document.execCommand(command, false, value);
     handleEditorInput();
+    updateActiveFormatStates();
+  };
+
+  const updateActiveFormatStates = () => {
+    if (typeof document === 'undefined') return;
+    setIsBoldActive(document.queryCommandState('bold'));
+    setIsItalicActive(document.queryCommandState('italic'));
+    setIsUnderlineActive(document.queryCommandState('underline'));
+    setIsStrikeActive(document.queryCommandState('strikeThrough'));
+    
+    setIsAlignLeftActive(document.queryCommandState('justifyLeft'));
+    setIsAlignCenterActive(document.queryCommandState('justifyCenter'));
+    setIsAlignRightActive(document.queryCommandState('justifyRight'));
+
+    try {
+      const font = document.queryCommandValue('fontName');
+      if (font) setActiveFontFamily(font.replace(/['"]/g, ''));
+      const size = document.queryCommandValue('fontSize');
+      if (size) setActiveFontSize(size);
+    } catch (e) {}
   };
 
   const insertHtmlAtCursor = (html: string) => {
@@ -200,14 +231,191 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   };
 
   const handleAddChecklistItem = () => {
+    // Enterprise upgrade: extract and preserve currently selected highlighted text instead of discarding it!
+    let selectedText = '';
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      selectedText = sel.toString().trim();
+    }
+    const labelText = selectedText || 'Task Item';
+
     const checklistHtml = `
       <div style="margin-top: 0.35rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;" contenteditable="true">
         <input type="checkbox" style="width: 1.15rem; height: 1.15rem; border-radius: 4px; border: 1.5px solid #d1d5db; accent-color: #fbbf24; cursor: pointer; margin: 0; flex-shrink: 0;" />
-        <span style="flex: 1; outline: none; margin-left: 0.25rem;">📝 Task Item</span>
+        <span style="flex: 1; outline: none; margin-left: 0.25rem;">${labelText}</span>
       </div>
     `;
     insertHtmlAtCursor(checklistHtml);
     handleEditorInput();
+    updateActiveFormatStates();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    // Strip copy-paste formatting (like bad background highlights, alignments, and columns)
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+    handleEditorInput();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = range.startContainer;
+        
+        let checklistRow: HTMLElement | null = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            if (el.tagName === 'DIV' && el.style.display === 'flex' && el.querySelector('input[type="checkbox"]')) {
+              checklistRow = el;
+              break;
+            }
+          }
+          node = node.parentNode as Node;
+        }
+
+        if (checklistRow) {
+          const textSpan = checklistRow.querySelector('span');
+          // If the user's cursor hits Backspace at the prefix of a checklist task, revert it to standard plain text line immediately
+          if (range.startOffset === 0 && range.collapsed) {
+            e.preventDefault();
+            const normalDiv = document.createElement('div');
+            normalDiv.innerHTML = textSpan ? textSpan.innerHTML : '<br>';
+            if (normalDiv.innerHTML === '') normalDiv.innerHTML = '<br>';
+            
+            checklistRow.parentNode?.replaceChild(normalDiv, checklistRow);
+            
+            const newRange = document.createRange();
+            newRange.setStart(normalDiv, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+            
+            handleEditorInput();
+            updateActiveFormatStates();
+          }
+        }
+      }
+    }
+
+    if (e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = range.startContainer;
+        
+        let checklistRow: HTMLElement | null = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            if (el.tagName === 'DIV' && el.style.display === 'flex' && el.querySelector('input[type="checkbox"]')) {
+              checklistRow = el;
+              break;
+            }
+          }
+          node = node.parentNode as Node;
+        }
+
+        if (checklistRow) {
+          e.preventDefault(); // stop default horiz-span breakout splits inside flex elements
+          const textSpan = checklistRow.querySelector('span');
+          const currentText = textSpan ? textSpan.innerText.trim() : '';
+
+          // If the task item layout is empty, convert back to a standard line
+          if (currentText === '' || currentText === 'Task Item' || currentText === '📝 Task Item') {
+            const normalDiv = document.createElement('div');
+            normalDiv.innerHTML = '<br>';
+            checklistRow.parentNode?.replaceChild(normalDiv, checklistRow);
+            
+            const newRange = document.createRange();
+            newRange.setStart(normalDiv, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+            
+            handleEditorInput();
+            updateActiveFormatStates();
+            return;
+          }
+
+          // Otherwise, construct a consecutive checklist task item right after
+          const nextRow = document.createElement('div');
+          nextRow.style.marginTop = '0.35rem';
+          nextRow.style.marginBottom = '0.35rem';
+          nextRow.style.display = 'flex';
+          nextRow.style.alignItems = 'center';
+          nextRow.style.gap = '0.5rem';
+          nextRow.setAttribute('contenteditable', 'true');
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.style.width = '1.15rem';
+          checkbox.style.height = '1.15rem';
+          checkbox.style.borderRadius = '4px';
+          checkbox.style.border = '1.5px solid #d1d5db';
+          checkbox.style.accentColor = '#fbbf24';
+          checkbox.style.cursor = 'pointer';
+          checkbox.style.margin = '0';
+          checkbox.style.flexShrink = '0';
+          
+          const span = document.createElement('span');
+          span.style.flex = '1';
+          span.style.outline = 'none';
+          span.style.marginLeft = '0.25rem';
+          span.innerHTML = '<br>';
+          
+          nextRow.appendChild(checkbox);
+          nextRow.appendChild(span);
+          
+          checklistRow.parentNode?.insertBefore(nextRow, checklistRow.nextSibling);
+          
+          const newRange = document.createRange();
+          newRange.setStart(span, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+          
+          handleEditorInput();
+          updateActiveFormatStates();
+          return;
+        }
+      }
+    }
+  };
+
+  const aiPolishNote = async (mode: 'polish' | 'summarize' | 'checklist') => {
+    if (!activeNote || isPolishingNote) return;
+    setIsPolishingNote(true);
+    setShowAiDropdown(false);
+    
+    try {
+      const response = await fetch('/api/gemini/polish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: activeNote.content || '',
+          mode
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.result) {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = data.result;
+        }
+        handleUpdateNoteField(activeNote.id, 'content', data.result);
+      } else {
+        alert(data.error || "Failed to utilize AI document polishing.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Error reaching AI note helper: " + e.message);
+    } finally {
+      setIsPolishingNote(false);
+    }
   };
 
   const handleFontChange = (font: string) => {
@@ -776,7 +984,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('bold');
                       }}
                       title="Bold text"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 font-extrabold cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 font-extrabold cursor-pointer h-full flex items-center ${
+                        isBoldActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <Bold className="w-3.5 h-3.5" />
                     </button>
@@ -787,7 +997,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('italic');
                       }}
                       title="Italic text"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 italic cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 italic cursor-pointer h-full flex items-center ${
+                        isItalicActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <Italic className="w-3.5 h-3.5" />
                     </button>
@@ -798,7 +1010,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('underline');
                       }}
                       title="Underline text"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 underline cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 underline cursor-pointer h-full flex items-center ${
+                        isUnderlineActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <Underline className="w-3.5 h-3.5" />
                     </button>
@@ -809,7 +1023,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('strikeThrough');
                       }}
                       title="Strikethrough text"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 line-through cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 line-through cursor-pointer h-full flex items-center ${
+                        isStrikeActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <Strikethrough className="w-3.5 h-3.5" />
                     </button>
@@ -827,7 +1043,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('justifyLeft');
                       }}
                       title="Align left"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center ${
+                        isAlignLeftActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <AlignLeft className="w-3.5 h-3.5" />
                     </button>
@@ -838,7 +1056,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('justifyCenter');
                       }}
                       title="Align center"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center ${
+                        isAlignCenterActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <AlignCenter className="w-3.5 h-3.5" />
                     </button>
@@ -849,7 +1069,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         execEditorCommand('justifyRight');
                       }}
                       title="Align right"
-                      className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center"
+                      className={`p-1 rounded text-slate-700 dark:text-slate-300 cursor-pointer h-full flex items-center ${
+                        isAlignRightActive ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
                     >
                       <AlignRight className="w-3.5 h-3.5" />
                     </button>
@@ -985,6 +1207,82 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                     </button>
                   </div>
 
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+                  {/* AI Smart Polish Dropdown */}
+                  <div className="relative font-sans">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAiDropdown(!showAiDropdown);
+                        setShowTextColorPicker(false);
+                        setShowHighlightColorPicker(false);
+                      }}
+                      disabled={isPolishingNote}
+                      title="AI Co-Author options"
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10.5px] font-mono font-black uppercase transition-all select-none h-8 cursor-pointer ${
+                        isPolishingNote
+                          ? 'bg-amber-500/20 text-amber-500 border-amber-500/30 animate-pulse'
+                          : 'border-slate-205 bg-amber-500/5 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>{isPolishingNote ? 'Polishing...' : 'AI Co-Author'}</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </button>
+
+                    {showAiDropdown && (
+                      <div className="absolute right-0 sm:left-0 mt-1 p-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 flex flex-col w-56 text-left animate-in slide-in-from-top-1 font-sans">
+                        <div className="p-2 text-[9px] font-mono font-extrabold uppercase text-slate-400 border-b border-slate-100 dark:border-slate-850 mb-1">
+                          Enterprise AI Assistant
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            aiPolishNote('polish');
+                          }}
+                          className="w-full text-left p-2 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg text-xs flex items-center gap-2 text-slate-705 dark:text-slate-300 cursor-pointer font-sans"
+                        >
+                          <span className="text-sm">✨</span>
+                          <div>
+                            <div className="font-extrabold text-[11px]">Smart Polish & Format</div>
+                            <div className="text-[10px] text-slate-400 font-normal">Heal spelling, headers & code blocks</div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            aiPolishNote('summarize');
+                          }}
+                          className="w-full text-left p-2 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg text-xs flex items-center gap-2 text-slate-705 dark:text-slate-300 cursor-pointer font-sans"
+                        >
+                          <span className="text-sm">📜</span>
+                          <div>
+                            <div className="font-extrabold text-[11px]">Executive Summary Digest</div>
+                            <div className="text-[10px] text-slate-400 font-normal">Synthesize takeaways & summary</div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            aiPolishNote('checklist');
+                          }}
+                          className="w-full text-left p-2 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg text-xs flex items-center gap-2 text-slate-705 dark:text-slate-300 cursor-pointer font-sans"
+                        >
+                          <span className="text-sm">📋</span>
+                          <div>
+                            <div className="font-extrabold text-[11px]">Autogen Practice Checklist</div>
+                            <div className="text-[10px] text-slate-400 font-normal">Extract tasks to checkbox rows</div>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
                   {/* Eraser */}
                   <button
                     type="button"
@@ -1020,15 +1318,30 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                         const target = e.target as HTMLElement;
                         if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
                           const checkbox = target as HTMLInputElement;
+                          const textSpan = checkbox.nextElementSibling as HTMLElement;
                           // Mirror state changes inside the editable HTML
                           if (checkbox.checked) {
                             checkbox.setAttribute('checked', 'checked');
+                            if (textSpan) {
+                              textSpan.style.textDecoration = 'line-through';
+                              textSpan.style.opacity = '0.5';
+                            }
                           } else {
                             checkbox.removeAttribute('checked');
+                            if (textSpan) {
+                              textSpan.style.textDecoration = 'none';
+                              textSpan.style.opacity = '1';
+                            }
                           }
                           handleEditorInput();
                         }
+                        updateActiveFormatStates();
                       }}
+                      onKeyDown={handleKeyDown}
+                      onPaste={handlePaste}
+                      onKeyUp={updateActiveFormatStates}
+                      onSelect={updateActiveFormatStates}
+                      onMouseUp={updateActiveFormatStates}
                       className="w-full bg-transparent text-slate-800 dark:text-slate-200 text-[14px] sm:text-[15px] leading-relaxed focus:outline-none min-h-[440px] outline-none select-text editor-area font-sans"
                       style={{ minHeight: '440px', outline: 'none' }}
                     />
@@ -1046,9 +1359,23 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
               </div>
 
               {/* Status Bar */}
-              <div className="px-6 py-2 border-t border-slate-100 dark:border-slate-850 bg-slate-50/20 dark:bg-slate-950/5 flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 font-medium">
-                <span>Created {new Date(activeNote.createdAt).toLocaleString()}</span>
-                <span>Last updated {new Date(activeNote.updatedAt).toLocaleTimeString()}</span>
+              <div className="px-6 py-2 border-t border-slate-100 dark:border-slate-850 bg-slate-50/20 dark:bg-slate-950/5 flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 font-medium font-bold flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span>Created {new Date(activeNote.createdAt).toLocaleString()}</span>
+                  <span className="opacity-40">|</span>
+                  <span>Last updated {new Date(activeNote.updatedAt).toLocaleTimeString()}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span>📊 {
+                    (() => {
+                      const txt = (activeNote.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                      return txt ? txt.split(' ').length : 0;
+                    })()
+                  } words</span>
+                  <span className="opacity-40">•</span>
+                  <span>{((activeNote.content || '').replace(/<[^>]*>/g, '').length)} chars</span>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 font-extrabold uppercase text-[8px] tracking-wider select-none">Enterprise Edition</span>
+                </div>
               </div>
 
             </div>
