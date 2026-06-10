@@ -81,6 +81,34 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
     onUpdateDb({ quickNotes: updatedNotes });
   };
 
+  const scrollCursorIntoView = () => {
+    if (typeof window === 'undefined' || !editorRef.current) return;
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      try {
+        const range = selection.getRangeAt(0).cloneRange();
+        range.collapse(true);
+        const rect = range.getBoundingClientRect();
+        
+        // Find the closest scrollable parent with overflow-y-auto style/class
+        const scrollContainer = editorRef.current.closest('.overflow-y-auto');
+        if (scrollContainer && rect.height > 0) {
+          const containerRect = scrollContainer.getBoundingClientRect();
+          const cursorBottom = rect.bottom;
+          const cursorTop = rect.top;
+          
+          if (cursorBottom > containerRect.bottom - 50) {
+            scrollContainer.scrollTop += (cursorBottom - containerRect.bottom + 80);
+          } else if (cursorTop < containerRect.top + 50) {
+            scrollContainer.scrollTop -= (containerRect.top - cursorTop + 80);
+          }
+        }
+      } catch (err) {
+        // Prevent silent API crashes
+      }
+    }
+  };
+
   const handleEditorInput = () => {
     if (editorRef.current && selectedNoteId) {
       const htmlValue = editorRef.current.innerHTML;
@@ -106,6 +134,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
         return n;
       });
       onUpdateDb({ quickNotes: updatedNotes });
+
+      // Maintain continuous cursor visibility as typing progresses
+      setTimeout(scrollCursorIntoView, 10);
     }
   };
 
@@ -199,6 +230,9 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
       const size = document.queryCommandValue('fontSize');
       if (size) setActiveFontSize(size);
     } catch (e) {}
+
+    // Automatically align workspace viewport to cursors
+    scrollCursorIntoView();
   };
 
   const insertHtmlAtCursor = (html: string) => {
@@ -1299,13 +1333,13 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                 </div>
 
                 {/* Main Text Editor Workspace (With native contentEditable and active placeholders) */}
-                <div className="flex-1 p-6 overflow-y-auto relative outline-none bg-slate-50 dark:bg-slate-950 flex justify-center">
+                <div className="flex-1 p-6 overflow-hidden min-h-0 relative outline-none bg-slate-50 dark:bg-slate-950 flex justify-center">
                   
                   {/* Styled physical paper sheet document mockup */}
-                  <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-8 relative min-h-[500px] flex flex-col text-slate-800 dark:text-slate-200 animate-in fade-in-50 duration-500">
+                  <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-8 relative h-[450px] overflow-y-auto flex flex-col text-slate-800 dark:text-slate-200 animate-in fade-in-50 duration-500 custom-scrollbar">
                     
                     {(!activeNote.content || activeNote.content === '<br>' || activeNote.content === '<div><br></div>' || activeNote.content === '') && (
-                      <div className="absolute left-[32px] top-[32px] right-[32px] text-slate-400 dark:text-slate-600 text-sm pointer-events-none select-none font-sans leading-relaxed">
+                      <div className="absolute left-[32px] top-[32px] right-[40px] text-slate-400 dark:text-slate-600 text-sm pointer-events-none select-none font-sans leading-relaxed">
                         Start typing your floating study note here... Feel free to change text alignments, select custom fonts, size and highlighters, or structure interactive checklists for tracking curriculum assignments!
                       </div>
                     )}
@@ -1342,8 +1376,8 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                       onKeyUp={updateActiveFormatStates}
                       onSelect={updateActiveFormatStates}
                       onMouseUp={updateActiveFormatStates}
-                      className="w-full bg-transparent text-slate-800 dark:text-slate-200 text-[14px] sm:text-[15px] leading-relaxed focus:outline-none min-h-[440px] outline-none select-text editor-area font-sans"
-                      style={{ minHeight: '440px', outline: 'none' }}
+                      className="w-full bg-transparent text-slate-800 dark:text-slate-200 text-[14px] sm:text-[15px] leading-relaxed focus:outline-none min-h-[350px] outline-none select-text editor-area font-sans"
+                      style={{ minHeight: '350px', outline: 'none' }}
                     />
                   </div>
 
