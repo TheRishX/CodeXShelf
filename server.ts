@@ -391,6 +391,76 @@ app.post("/api/gemini/polish", async (req, res) => {
   }
 });
 
+// AI Command Execution Inside the Notepad
+app.post("/api/gemini/command", async (req, res) => {
+  const { content, command } = req.body;
+
+  if (!ai) {
+    return res.status(503).json({
+      success: false,
+      error: "Gemini AI client is not configured. Please add your GEMINI_API_KEY in Settings."
+    });
+  }
+
+  if (!command) {
+    return res.status(400).json({ success: false, error: "Missing command payload." });
+  }
+
+  try {
+    const prompt = `You are an elite, AI-driven notepad assistant called "Notepad AI".
+You receive the existing content of a study note (which may be empty, plain text, or rich HTML) and a natural language instruction or command from the user.
+Your task is to modify, reformat, translate, extend, or rewrite the HTML content strictly following the user's instructions.
+
+CRITICAL INSTRUCTIONS FOR CHECKLIST CREATION:
+If the user asks to format materials into a checklist, write items as a checklist, arrange questions/list items into a checklist, or any similar checklist command, you MUST convert each item into the exact checklist HTML element template.
+Checklist Item HTML Template (one per item):
+<div style="margin-top: 0.35rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;" contenteditable="true">
+  <input type="checkbox" style="width: 1.15rem; height: 1.15rem; border-radius: 4px; border: 1.5px solid #d1d5db; accent-color: #fbbf24; cursor: pointer; margin: 0; flex-shrink: 0;" />
+  <span style="flex: 1; outline: none; margin-left: 0.25rem;">[CONTENT]</span>
+</div>
+
+Replace [CONTENT] with the text of the item, preserving any code formatting, bolding, or styles if applicable.
+
+OTHER FORMATTING INSTRUCTIONS:
+- Return ONLY valid, clean, and beautifully structured HTML tags that are safe to insert inside a contenteditable workspace (e.g. <div>, <span>, <h2>, <h3>, <ul>, <li>, <p>, <b>, <i>, <pre>, <code>).
+- Keep styles inline or use standard semantic HTML tags.
+- NEVER wrap your output in markdown \`\`\`html blocks or other markdown decorators. Your response must be the raw HTML string itself!
+- Be direct and concise; do not add introductory phrases like "Here is your updated checklist" or concluding remarks. Jump directly into the edited HTML note content.
+
+User's Existing HTML Content:
+${content || "*(Empty note)*"}
+
+User's Command:
+"${command}"
+
+Provide the final HTML after executing the command:`;
+
+    const response = await generateWithRetry({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+    });
+
+    let cleanedHtml = (response.text || "").trim();
+
+    // Safety clean: strip markdown code blocks if the model ignored instructions
+    if (cleanedHtml.startsWith("```html")) {
+      cleanedHtml = cleanedHtml.substring(7);
+    } else if (cleanedHtml.startsWith("```")) {
+      cleanedHtml = cleanedHtml.substring(3);
+    }
+    if (cleanedHtml.endsWith("```")) {
+      cleanedHtml = cleanedHtml.substring(0, cleanedHtml.length - 3);
+    }
+    cleanedHtml = cleanedHtml.trim();
+
+    return res.json({ success: true, result: cleanedHtml });
+
+  } catch (error: any) {
+    console.error("AI Command Error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to process AI command in note." });
+  }
+});
+
 // 4. YouTube Playlist Scraper with Intel Fallback
 app.get("/api/youtube/playlist", async (req, res) => {
   const listIdQuery = req.query.list || req.query.playlistId || req.query.playlistUrl;

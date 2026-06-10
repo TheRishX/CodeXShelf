@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, Plus, Trash2, Search, Pin, Star, Mic, MicOff, Check, CornerDownRight, ListFilter, Calendar,
   Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, 
-  CheckSquare, Palette, Eraser, Type, ChevronDown
+  CheckSquare, Palette, Eraser, Type, ChevronDown, Maximize2, Minimize2, ChevronsUp, ChevronsDown
 } from 'lucide-react';
 import { DatabaseState, QuickNoteItem } from '../types';
 
@@ -37,6 +37,12 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
   const [isAlignRightActive, setIsAlignRightActive] = useState(false);
   const [isPolishingNote, setIsPolishingNote] = useState(false);
   const [showAiDropdown, setShowAiDropdown] = useState(false);
+  const [showAiTray, setShowAiTray] = useState(false);
+  const [voiceErrorMessage, setVoiceErrorMessage] = useState<string | null>(null);
+  const [aiCommand, setAiCommand] = useState('');
+  const [isExecutingCommand, setIsExecutingCommand] = useState(false);
+  const [isToolbarMinimized, setIsToolbarMinimized] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   const TEXT_COLORS = [
     { label: 'Charcoal', value: '#1e293b', bgClass: 'bg-slate-800' },
@@ -140,6 +146,17 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
     }
   };
 
+  const selectedNoteIdRef = useRef(selectedNoteId);
+  const dbStateRef = useRef(dbState);
+
+  useEffect(() => {
+    selectedNoteIdRef.current = selectedNoteId;
+  }, [selectedNoteId]);
+
+  useEffect(() => {
+    dbStateRef.current = dbState;
+  }, [dbState]);
+
   useEffect(() => {
     if (SpeechRecognitionClass) {
       const rec = new SpeechRecognitionClass();
@@ -161,12 +178,16 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
       };
 
       rec.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
+        const results = event.results;
+        const lastResultIndex = event.resultIndex;
+        const transcript = Array.from(results)
+          .slice(lastResultIndex)
           .map((result: any) => result[0])
           .map((result: any) => result.transcript)
           .join('');
         
-        if (transcript && selectedNoteId) {
+        const activeId = selectedNoteIdRef.current;
+        if (transcript && activeId) {
           if (editorRef.current) {
             editorRef.current.focus();
             const textNode = document.createTextNode(' ' + transcript);
@@ -181,18 +202,43 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
             } else {
               editorRef.current.appendChild(textNode);
             }
-            handleEditorInput();
+            
+            // Re-simulate input save for document update
+            const htmlValue = editorRef.current.innerHTML;
+            const currentNotes = dbStateRef.current.quickNotes || [];
+            const currentNote = currentNotes.find(n => n.id === activeId);
+            const rawText = editorRef.current.innerText || '';
+            const lines = rawText.trim().split('\n');
+            const firstLine = lines[0] ? lines[0].substring(0, 40) : '';
+            const isUntitled = !currentNote || !currentNote.title || currentNote.title.startsWith('Untitled Note') || currentNote.title.trim() === '';
+            const updatedTitle = isUntitled ? (firstLine || 'Untitled Note') : currentNote.title;
+
+            const updatedNotes = currentNotes.map(n => {
+              if (n.id === activeId) {
+                return {
+                  ...n,
+                  title: updatedTitle,
+                  content: htmlValue,
+                  updatedAt: new Date().toISOString()
+                };
+              }
+              return n;
+            });
+            onUpdateDb({ quickNotes: updatedNotes });
+            
+            setTimeout(scrollCursorIntoView, 10);
           }
         }
       };
 
       setRecognition(rec);
     }
-  }, [selectedNoteId]);
+  }, []);
 
   const toggleListening = () => {
     if (!recognition) {
-      alert("Speech recognition is not fully supported or is restricted in this browser environment. Please ensure that microphone access permissions are granted.");
+      setVoiceErrorMessage("Mic speech recognition is restricted or not supported in this frame. Open the app in a new tab to enable standard voice typing!");
+      setTimeout(() => setVoiceErrorMessage(null), 7000);
       return;
     }
 
@@ -200,9 +246,12 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
       recognition.stop();
     } else {
       try {
+        setVoiceErrorMessage(null);
         recognition.start();
       } catch (err) {
         console.error("Failed to start speech recognition:", err);
+        setVoiceErrorMessage("Could not start microphone session. Verify permission settings.");
+        setTimeout(() => setVoiceErrorMessage(null), 4005);
       }
     }
   };
@@ -452,6 +501,41 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
     }
   };
 
+  const handleRunAiCommand = async (commandToRun?: string) => {
+    const finalCommand = commandToRun || aiCommand;
+    if (!activeNote || !finalCommand.trim() || isExecutingCommand) return;
+    setIsExecutingCommand(true);
+    
+    try {
+      const response = await fetch('/api/gemini/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: activeNote.content || '',
+          command: finalCommand.trim()
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.result) {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = data.result;
+        }
+        handleUpdateNoteField(activeNote.id, 'content', data.result);
+        if (!commandToRun) {
+          setAiCommand(''); // Clear custom text field once succeeded
+        }
+      } else {
+        alert(data.error || "Failed to execute AI command.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Error reaching AI command helper: " + e.message);
+    } finally {
+      setIsExecutingCommand(false);
+    }
+  };
+
   const handleFontChange = (font: string) => {
     setActiveFontFamily(font);
     execEditorCommand('fontName', font);
@@ -690,16 +774,20 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                       if (isListening) recognition.stop();
                       setSelectedNoteId(note.id);
                     }}
-                    className={`w-full p-4 text-left transition-all relative flex flex-col gap-1 cursor-pointer border-l-3 ${
+                    className={`w-full p-4 text-left transition-all relative flex flex-col gap-2 cursor-pointer border-l-4 ${
                       isActive
-                        ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.015] border-amber-500'
-                        : 'border-transparent hover:bg-slate-100/60 dark:hover:bg-slate-850/30'
+                        ? 'bg-slate-55 dark:bg-slate-800/40 shadow-sm'
+                        : 'hover:bg-slate-50/50 dark:hover:bg-slate-850/20'
                     }`}
+                    style={{ 
+                      borderLeftColor: note.color || '#fbbf24',
+                      background: isActive && note.color ? `${note.color}10` : undefined
+                    }}
                   >
                     {/* Header and tools */}
                     <div className="flex items-center justify-between gap-1">
-                      <span className={`text-xs font-extrabold truncate ${
-                        isActive ? 'text-amber-600 dark:text-amber-450' : 'text-slate-800 dark:text-slate-100'
+                      <span className={`text-xs font-black truncate tracking-tight ${
+                        isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'
                       }`}>
                         {note.title.trim() === '' ? 'Untitled Note' : note.title}
                       </span>
@@ -716,21 +804,30 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                     </div>
 
                     {/* Content preview snippet */}
-                    <p className="text-[11px] text-slate-450 dark:text-slate-450 line-clamp-1 leading-relaxed">
+                    <p className="text-[11px] text-slate-455 dark:text-slate-500 line-clamp-1 leading-relaxed">
                       {snippet}
                     </p>
 
                     {/* Date and tags block */}
-                    <div className="flex items-center justify-between mt-2 text-[9.5px] font-mono text-slate-400 dark:text-slate-500 font-bold">
+                    <div className="flex items-center justify-between mt-1 text-[9.5px] font-mono text-slate-400 dark:text-slate-500 font-bold">
                       <span className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 opacity-60" />
+                        <Calendar className="w-3 h-3 opacity-60" />
                         {formattedDate}
                       </span>
                       {note.color && (
-                        <span 
-                          className="w-1.5 h-1.5 rounded-full" 
-                          style={{ backgroundColor: note.color }}
-                        />
+                        <span className="flex items-center gap-1">
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-sm" 
+                            style={{ backgroundColor: note.color }}
+                          />
+                          <span className="text-[8px] uppercase tracking-wider opacity-80" style={{ color: note.color }}>
+                            {note.color === '#fbbf24' ? 'Amber' : 
+                             note.color === '#f87171' ? 'Red' :
+                             note.color === '#60a5fa' ? 'Blue' :
+                             note.color === '#34d399' ? 'Green' :
+                             note.color === '#c084fc' ? 'Violet' : 'Custom'}
+                          </span>
+                        </span>
                       )}
                     </div>
                   </button>
@@ -740,8 +837,12 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
           </div>
         </div>
 
-        {/* Right pane: Dedicated Rich Text Editor (lg:col-span-8) */}
-        <div className="lg:col-span-8 flex flex-col h-full bg-white dark:bg-slate-900">
+        {/* Right pane: Dedicated Rich Text Editor (lg:col-span-8 or absolute overlay inside viewport) */}
+        <div className={`flex flex-col h-full bg-white dark:bg-slate-900 ${
+          isFullScreen 
+            ? 'fixed inset-0 z-[100] w-screen h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 overflow-hidden animate-in fade-in-50 duration-200' 
+            : 'lg:col-span-8'
+        }`}>
           {activeNote ? (
             <div className="flex flex-col h-full">
               
@@ -796,8 +897,35 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                 </div>
 
                 {/* Right utility elements (Microphone / hands-free mode + Trash) */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 relative">
                   
+                  {/* Inline Voice Error Tooltip Banner */}
+                  {voiceErrorMessage && (
+                    <div className="absolute right-0 bottom-full mb-2 z-50 w-72 p-2.5 bg-red-500 text-white rounded-xl text-[11px] font-sans leading-normal shadow-lg animate-in fade-in duration-200">
+                      <div className="font-extrabold flex items-center gap-1">
+                        <span>⚠️ Voice Typing Restriction</span>
+                      </div>
+                      <p className="mt-0.5 opacity-90">{voiceErrorMessage}</p>
+                    </div>
+                  )}
+
+                  {/* AI Assistant Command Center Drawer Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAiTray(!showAiTray);
+                    }}
+                    title={showAiTray ? "Hide AI Assistant Input Bar" : "Speak to AI Assistant / Modify Notepad"}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-sans text-[10px] font-black uppercase transition-all duration-300 cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
+                      showAiTray
+                        ? 'bg-amber-500 text-white border-transparent shadow-[0_0_12px_rgba(245,158,11,0.5)]'
+                        : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/30'
+                    }`}
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${showAiTray ? 'animate-spin' : 'animate-pulse text-amber-500'}`} />
+                    <span>AI Assistant</span>
+                  </button>
+
                   {/* Hands-free Speak Mic button */}
                   {SpeechRecognitionClass && (
                     <button
@@ -824,6 +952,24 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                     </button>
                   )}
 
+                  {/* Full Screen Toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(!isFullScreen)}
+                    title={isFullScreen ? "Exit full screen (reclaims standard split frame)" : "Distraction-free Full Screen Mode"}
+                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                      isFullScreen 
+                        ? 'bg-amber-500/10 text-amber-650 border-amber-500/20 hover:scale-[1.02]' 
+                        : 'border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                    }`}
+                  >
+                    {isFullScreen ? (
+                      <Minimize2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
                   {/* Delete button */}
                   <button
                     type="button"
@@ -838,110 +984,12 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
 
               {/* Editor Workspace */}
               <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
-                
-                {/* Note Title Input with beautiful framing */}
-                <div className="px-6 pt-5 pb-2">
-                  <input
-                    type="text"
-                    placeholder="Give your note a title..."
-                    value={activeNote.title === 'Untitled Note' ? '' : activeNote.title}
-                    onChange={(e) => handleUpdateNoteField(activeNote.id, 'title', e.target.value)}
-                    className="w-full bg-transparent text-slate-900 dark:text-white text-xl font-extrabold tracking-tight focus:outline-none placeholder-slate-350 dark:placeholder-slate-600 font-sans"
-                  />
-                </div>
-
-                {/* Dynamic Bidirectional Connection Link bar */}
-                <div className="mx-6 my-2 p-2.5 rounded-2xl bg-amber-500/[0.04] border border-amber-500/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs animate-in slide-in-from-top-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm select-none">🔗</span>
-                    <span className="font-extrabold text-slate-700 dark:text-slate-200">Connected Study Resource:</span>
-                    {activeNote.linkedResourceId ? (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/40 border border-amber-300/30 text-amber-800 dark:text-amber-300 rounded-lg text-[11px] font-bold">
-                        <span className="uppercase font-mono text-[9px] bg-amber-500/15 px-1 py-0.2 rounded font-black text-amber-755 dark:text-amber-300">
-                          {activeNote.linkedResourceType}
-                        </span>
-                        <span className="truncate max-w-[150px]">{activeNote.linkedResourceTitle}</span>
-                        <button
-                          onClick={() => {
-                            handleUpdateNoteField(activeNote.id, 'linkedResourceId', undefined);
-                            handleUpdateNoteField(activeNote.id, 'linkedResourceType', undefined);
-                            handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', undefined);
-                          }}
-                          className="hover:bg-amber-200 dark:hover:bg-amber-900/65 p-0.5 rounded text-amber-900 dark:text-amber-300 font-bold ml-1 cursor-pointer"
-                          title="Remove study connection"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 font-medium">Unlinked note (offline standalone)</span>
-                    )}
-                  </div>
-
-                  {/* Select Resource to Bind */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase font-mono">Assign connection:</span>
-                    <select
-                      onChange={(e) => {
-                        if (!e.target.value) return;
-                        const [type, id, title] = e.target.value.split('|');
-                        handleUpdateNoteField(activeNote.id, 'linkedResourceId', id);
-                        handleUpdateNoteField(activeNote.id, 'linkedResourceType', type as any);
-                        handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', title);
-                        e.target.value = ''; // reset selection
-                      }}
-                      className="text-[10.5px] font-mono font-bold bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer py-1.5"
-                    >
-                      <option value="">-- Connect with Study Material --</option>
-                               {/* PDF List */}
-                      {dbState.pdfs && dbState.pdfs.length > 0 && (
-                        <optgroup label="PDFs & Texts" className="bg-white dark:bg-slate-900">
-                          {dbState.pdfs.map(p => (
-                            <option key={p.id} value={`pdf|${p.id}|${p.title}`}>
-                              📄 {p.title}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {/* Assignment List */}
-                      {dbState.assignments && dbState.assignments.length > 0 && (
-                        <optgroup label="Assignments & Notebooks" className="bg-white dark:bg-slate-900">
-                          {dbState.assignments.map(a => (
-                            <option key={a.id} value={`assignment|${a.id}|${a.title}`}>
-                              📂 {a.title}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {/* Books List */}
-                      {dbState.books && dbState.books.length > 0 && (
-                        <optgroup label="Books" className="bg-white dark:bg-slate-900">
-                          {dbState.books.map(b => (
-                            <option key={b.id} value={`book|${b.id}|${b.title}`}>
-                              📚 {b.title}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {/* Videos List */}
-                      {dbState.videos && dbState.videos.length > 0 && (
-                        <optgroup label="Videos & Lectures" className="bg-white dark:bg-slate-900">
-                          {dbState.videos.map(v => (
-                            <option key={v.id} value={`video|${v.id}|${v.title}`}>
-                              📺 {v.title}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </div>
-                </div>
+                {/* Clean, spacious editing workspace with integrated title and study connection inside pad mockup */}
 
                 {/* Google Docs Style Rich Formatting Toolbar */}
-                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 dark:bg-slate-950/40 border-y border-slate-150 dark:border-slate-850 select-none">
+                <div className="flex items-center justify-between gap-1.5 p-2 bg-slate-50 dark:bg-slate-950/40 border-y border-slate-150 dark:border-slate-850 select-none">
+                  {!isToolbarMinimized ? (
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                   
                   {/* Font Selection Dropdown */}
                   <div className="relative flex items-center">
@@ -1329,17 +1377,264 @@ export function QuickNotesView({ dbState, onUpdateDb }: QuickNotesViewProps) {
                   >
                     <Eraser className="w-3.5 h-3.5" />
                   </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-[10.5px] font-sans font-extrabold uppercase font-mono select-none pl-1 py-1">
+                      <Palette className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0 animate-bounce" />
+                      <span>Note styling toolbar is collapsed</span>
+                    </div>
+                  )}
 
+                  {/* Shrink / Expand toggle button always visible */}
+                  <button
+                    type="button"
+                    onClick={() => setIsToolbarMinimized(!isToolbarMinimized)}
+                    title={isToolbarMinimized ? "Expand formatting toolbar options" : "Collapse formatting toolbar options"}
+                    className="ml-auto p-1 px-2.5 rounded-lg border border-slate-250 dark:border-slate-800 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-505 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors cursor-pointer text-[10px] font-mono font-bold flex items-center gap-1.5 shrink-0 h-8 uppercase tracking-wider"
+                  >
+                    {isToolbarMinimized ? (
+                      <>
+                        <span>EXPAND</span>
+                        <ChevronsDown className="w-3.5 h-3.5" />
+                      </>
+                    ) : (
+                      <>
+                        <span>COLLAPSE</span>
+                        <ChevronsUp className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                {/* Main Text Editor Workspace (With native contentEditable and active placeholders) */}
-                <div className="flex-1 p-6 overflow-hidden min-h-0 relative outline-none bg-slate-50 dark:bg-slate-950 flex justify-center">
+                {/* AI Command Bar Drawer Slide */}
+                {showAiTray && (
+                  <div className="px-6 py-3 bg-[linear-gradient(135deg,rgba(245,158,11,0.05),rgba(251,191,36,0.02))] border-b border-slate-200 dark:border-slate-850 flex flex-col md:flex-row gap-2.5 items-stretch md:items-center animate-in slide-in-from-top duration-300">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+                      </div>
+                      <input
+                        type="text"
+                        value={aiCommand}
+                        onChange={(e) => setAiCommand(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleRunAiCommand();
+                          }
+                        }}
+                        disabled={isExecutingCommand || isPolishingNote}
+                        placeholder="Ask AI to modify, edit or format (e.g. 'Arrange them in a checklist' or 'Summarize')..."
+                        className="w-full pl-9 pr-3 py-2 text-xs font-sans bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all select-text cursor-text shadow-sm"
+                      />
+                    </div>
+                    
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleRunAiCommand()}
+                        disabled={isExecutingCommand || isPolishingNote || !aiCommand.trim()}
+                        className={`px-3.5 py-2 rounded-xl text-[10px] font-mono font-black uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md hover:scale-[1.02] active:scale-[0.98] ${
+                          isExecutingCommand
+                            ? 'bg-amber-500/20 text-amber-500 cursor-not-allowed animate-pulse'
+                            : aiCommand.trim()
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/10'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {isExecutingCommand ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                            <span>Executing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3 w-3 text-amber-500" />
+                            <span>Run Command</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      {/* Quick helper tag chips */}
+                      <div className="flex items-center gap-1 sm:ml-1">
+                        <button
+                          type="button"
+                          onClick={() => handleRunAiCommand("Arrange them in a checklist")}
+                          disabled={isExecutingCommand || isPolishingNote}
+                          className="px-2.5 py-2 bg-white hover:bg-amber-500/15 dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-xl text-[10.5px] font-sans font-bold cursor-pointer flex items-center border border-slate-200 dark:border-slate-805 hover:border-amber-300/30 shrink-0 shadow-sm transition-all hover:scale-[1.02]"
+                          title="Arrange current notes list as a sequence of interactive checkboxes"
+                        >
+                          📋 Checklist
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRunAiCommand("Bulletize contents with bold headings")}
+                          disabled={isExecutingCommand || isPolishingNote}
+                          className="hidden sm:flex px-2.5 py-2 bg-white hover:bg-amber-500/15 dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-xl text-[10.5px] font-sans font-bold cursor-pointer items-center border border-slate-200 dark:border-slate-805 hover:border-amber-300/30 shrink-0 shadow-sm transition-all hover:scale-[1.02]"
+                          title="Convert into bullet points"
+                        >
+                          ⚫ Bullets
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                             {/* Main Text Editor Workspace (With native contentEditable and active placeholders) */}
+                <div className="flex-1 p-6 overflow-hidden min-h-0 relative outline-none bg-slate-50 dark:bg-slate-950 flex justify-center h-full">
                   
                   {/* Styled physical paper sheet document mockup */}
-                  <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-8 relative h-[450px] overflow-y-auto flex flex-col text-slate-800 dark:text-slate-200 animate-in fade-in-50 duration-500 custom-scrollbar">
+                  <div className={`w-full bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 shadow-xl rounded-2xl p-6 sm:p-8 relative overflow-y-auto flex flex-col text-slate-800 dark:text-slate-200 animate-in fade-in-50 duration-500 custom-scrollbar flex-1 h-full max-w-4xl`}>
+                    
+                    {/* Integrated Header Row inside physical mockup: Combines Title Input & Connected Material Badge */}
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-4 mb-5 shrink-0 select-none">
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="text"
+                          placeholder="Give your note a title..."
+                          value={activeNote.title === 'Untitled Note' ? '' : activeNote.title}
+                          onChange={(e) => handleUpdateNoteField(activeNote.id, 'title', e.target.value)}
+                          className="w-full bg-transparent text-slate-900 dark:text-white text-xl sm:text-2xl font-black tracking-tight focus:outline-none placeholder-slate-300 dark:placeholder-slate-750 font-display"
+                        />
+                        <div className="text-[10px] text-amber-500/85 font-mono font-bold mt-1 uppercase flex items-center gap-1">
+                          <span>🗒️ QUICK NOTE</span>
+                          {activeNote.linkedResourceId && (
+                            <span className="flex items-center gap-1 text-slate-400 font-sans font-normal normal-case ml-1">
+                              • Connected with {activeNote.linkedResourceType}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Connection Selector Badge (Allows inline link/unlink directly within document paper) */}
+                      <div className="shrink-0 flex items-center gap-2 self-start md:self-center">
+                        {activeNote.linkedResourceId ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-400 rounded-xl text-[11px] font-black tracking-tight">
+                            <span className="uppercase font-mono text-[9px] bg-amber-500/15 px-1.5 py-0.5 rounded font-black text-amber-600 dark:text-amber-400">
+                              {activeNote.linkedResourceType}
+                            </span>
+                            <span className="truncate max-w-[150px]" title={activeNote.linkedResourceTitle}>
+                              {activeNote.linkedResourceTitle}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceId', undefined);
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceType', undefined);
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', undefined);
+                              }}
+                              className="hover:bg-amber-550/25 p-0.5 rounded text-amber-900 dark:text-amber-300 font-bold ml-1 cursor-pointer transition-colors"
+                              title="Unlink resource connection"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                const [type, id, title] = e.target.value.split('|');
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceId', id);
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceType', type as any);
+                                handleUpdateNoteField(activeNote.id, 'linkedResourceTitle', title);
+                                e.target.value = '';
+                              }}
+                              className="text-[10px] font-mono font-extrabold uppercase bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-slate-900 pr-5"
+                            >
+                              <option value="">🔗 Connect Material...</option>
+                              {dbState.pdfs && dbState.pdfs.length > 0 && (
+                                <optgroup label="PDFs & Documents" className="bg-white dark:bg-slate-900">
+                                  {dbState.pdfs.map(p => (
+                                    <option key={p.id} value={`pdf|${p.id}|${p.title}`}>📄 {p.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.assignments && dbState.assignments.length > 0 && (
+                                <optgroup label="Assignments" className="bg-white dark:bg-slate-900">
+                                  {dbState.assignments.map(a => (
+                                    <option key={a.id} value={`assignment|${a.id}|${a.title}`}>📂 {a.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.books && dbState.books.length > 0 && (
+                                <optgroup label="Books" className="bg-white dark:bg-slate-900">
+                                  {dbState.books.map(b => (
+                                    <option key={b.id} value={`book|${b.id}|${b.title}`}>📚 {b.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.videos && dbState.videos.length > 0 && (
+                                <optgroup label="Videos" className="bg-white dark:bg-slate-900">
+                                  {dbState.videos.map(v => (
+                                    <option key={v.id} value={`video|${v.id}|${v.title}`}>📺 {v.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.subtopics && dbState.subtopics.length > 0 && (
+                                <optgroup label="Subtopics" className="bg-white dark:bg-slate-900">
+                                  {dbState.subtopics.map(s => (
+                                    <option key={s.id} value={`subtopic|${s.id}|${s.name}`}>🔖 {s.name}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.notes && dbState.notes.length > 0 && (
+                                <optgroup label="Core Notes" className="bg-white dark:bg-slate-900">
+                                  {dbState.notes.map(n => (
+                                    <option key={n.id} value={`note|${n.id}|${n.title}`}>📝 {n.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {quickNotes && quickNotes.length > 1 && (
+                                <optgroup label="🗒️ Quick Notes" className="bg-white dark:bg-slate-900">
+                                  {quickNotes.filter(qnOption => qnOption.id !== activeNote.id).map(qnOption => (
+                                    <option key={qnOption.id} value={`quicknote|${qnOption.id}|${qnOption.title}`}>🗒️ {qnOption.title || 'Untitled note'}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.concepts && dbState.concepts.length > 0 && (
+                                <optgroup label="💡 Core Academic Concepts" className="bg-white dark:bg-slate-900">
+                                  {dbState.concepts.map(conceptOption => (
+                                    <option key={conceptOption.id} value={`concept|${conceptOption.id}|${conceptOption.title}`}>💡 {conceptOption.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.coding && dbState.coding.length > 0 && (
+                                <optgroup label="💻 Coding Lab Problems" className="bg-white dark:bg-slate-900">
+                                  {dbState.coding.map(codingOption => (
+                                    <option key={codingOption.id} value={`coding|${codingOption.id}|${codingOption.title}`}>💻 {codingOption.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.interviews && dbState.interviews.length > 0 && (
+                                <optgroup label="🗣️ Interview Simulator Questions" className="bg-white dark:bg-slate-900">
+                                  {dbState.interviews.map(intOption => (
+                                    <option key={intOption.id} value={`interview|${intOption.id}|${intOption.question}`}>🗣️ {intOption.question.length > 30 ? intOption.question.substring(0, 30) + '...' : intOption.question}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.quizzes && dbState.quizzes.length > 0 && (
+                                <optgroup label="🧠 Interactive Quiz Cards" className="bg-white dark:bg-slate-900">
+                                  {dbState.quizzes.map(quizOption => (
+                                    <option key={quizOption.id} value={`quiz|${quizOption.id}|${quizOption.question}`}>🧠 {quizOption.question.length > 30 ? quizOption.question.substring(0, 30) + '...' : quizOption.question}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {dbState.todos && dbState.todos.length > 0 && (
+                                <optgroup label="🎯 Curriculum Work Items" className="bg-white dark:bg-slate-900">
+                                  {dbState.todos.map(todoOption => (
+                                    <option key={todoOption.id} value={`todo|${todoOption.id}|${todoOption.title}`}>🎯 {todoOption.title}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                     
                     {(!activeNote.content || activeNote.content === '<br>' || activeNote.content === '<div><br></div>' || activeNote.content === '') && (
-                      <div className="absolute left-[32px] top-[32px] right-[40px] text-slate-400 dark:text-slate-600 text-sm pointer-events-none select-none font-sans leading-relaxed">
+                      <div className="absolute left-[24px] sm:left-[32px] top-[140px] right-[24px] sm:right-[32px] text-slate-400 dark:text-slate-600 text-xs sm:text-sm pointer-events-none select-none font-sans leading-relaxed">
                         Start typing your floating study note here... Feel free to change text alignments, select custom fonts, size and highlighters, or structure interactive checklists for tracking curriculum assignments!
                       </div>
                     )}

@@ -360,100 +360,109 @@ export function AllPdfsView({ dbState, onOpenSubtopic, onUpdateDb, onSelectView 
 
       {/* Main files rendering grid stack */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPdfs.map(item => {
+         {filteredPdfs.map(item => {
           const { sub, topic } = getSubtopicPath(item.subtopicId);
           const isReading = !!item.isReading;
           const status = item.status || 'unseen';
 
-            // Decide border and background styles based on learning status
-            let cardStyles = "border-slate-202 dark:border-slate-850 bg-white dark:bg-slate-900";
-            let statusBadge = null;
+          // Decide border and background styles based on learning status
+          let cardStyles = "border-slate-202 dark:border-slate-850 bg-white dark:bg-slate-900";
+          let statusBadge = null;
 
-            if (isReading) {
-              cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.04] dark:bg-amber-955/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
-            } else if (status === 'completed' || item.isCompleted) {
-              cardStyles = "border-emerald-250 dark:border-emerald-900/60 bg-emerald-500/[0.005] dark:bg-emerald-950/[0.005]";
-            } else if (status === 'revision' || item.needsRevision) {
-              cardStyles = "border-indigo-250 dark:border-indigo-900/65 bg-indigo-500/[0.005] dark:bg-indigo-950/[0.005]";
-            } else if (status === 'reading') {
-              cardStyles = "border-amber-200 dark:border-amber-900/60 bg-amber-500/[0.005] dark:bg-amber-950/[0.005]";
-            }
+          if (isReading) {
+            cardStyles = "border-amber-400 dark:border-amber-500 ring-4 ring-amber-400/25 dark:ring-amber-950/40 shadow-[0_10px_35px_rgba(245,158,11,0.18)] bg-gradient-to-tr from-orange-50/50 via-amber-50/30 to-rose-50/50 dark:from-orange-950/10 dark:via-amber-950/15 dark:to-rose-950/10";
+          } else if (status === 'completed' || item.isCompleted) {
+            cardStyles = "border-emerald-250 dark:border-emerald-900/60 bg-emerald-500/[0.005] dark:bg-emerald-950/[0.005]";
+          } else if (status === 'revision' || item.needsRevision) {
+            cardStyles = "border-indigo-250 dark:border-indigo-900/65 bg-indigo-500/[0.005] dark:bg-indigo-950/[0.005]";
+          } else if (status === 'reading') {
+            cardStyles = "border-amber-200 dark:border-amber-900/60 bg-amber-500/[0.005] dark:bg-amber-950/[0.005]";
+          }
 
-            switch (status) {
-              case 'completed':
-                statusBadge = <span className="text-[9px] font-black text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/20 px-1.5 py-0.5 rounded">🎉 DONE</span>;
-                break;
-              case 'revision':
-                statusBadge = <span className="text-[9px] font-black text-indigo-600 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-1.5 py-0.5 rounded">🔄 REVISE</span>;
-                break;
-              case 'reading':
-                statusBadge = <span className="text-[9px] font-black text-amber-600 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/20 px-1.5 py-0.5 rounded">📖 READING</span>;
-                break;
-              default:
-                statusBadge = <span className="text-[9px] font-black text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-1.5 py-0.5 rounded">⏳ UNREAD</span>;
-            }
+          switch (status) {
+            case 'completed':
+              statusBadge = <span className="text-[9px] font-black text-emerald-600 bg-emerald-100/60 dark:text-emerald-400 dark:bg-emerald-955/20 px-1.5 py-0.5 rounded">🎉 DONE</span>;
+              break;
+            case 'revision':
+              statusBadge = <span className="text-[9px] font-black text-indigo-600 bg-indigo-100/60 dark:text-indigo-400 dark:bg-indigo-955/25 px-1.5 py-0.5 rounded">🔄 REVISE</span>;
+              break;
+            case 'reading':
+              statusBadge = <span className="text-[9px] font-black text-amber-600 bg-amber-100/60 dark:text-amber-400 dark:bg-amber-955/20 px-1.5 py-0.5 rounded">📖 READING</span>;
+              break;
+            default:
+              statusBadge = <span className="text-[9px] font-black text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-800 px-1.5 py-0.5 rounded">⏳ UNREAD</span>;
+          }
 
-            return (
-              <div 
-                key={item.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, item.id)}
-                onDragOver={(e) => handleDragOver(e, item.id)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, item.id)}
-                onDragEnd={handleDragEnd}
-                onClick={() => markPdfAsReading(item.id)}
-                className={`border rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all hover:border-blue-400 dark:hover:border-slate-700 shadow-3xs text-left cursor-grab active:cursor-grabbing ${cardStyles} ${
-                  draggedId === item.id 
-                    ? 'opacity-40 border-dashed border-blue-500 dark:border-blue-400 scale-95 shadow-sm bg-slate-50/50 dark:bg-slate-950/40' 
-                    : ''
-                } ${
-                  dragOverId === item.id 
-                    ? 'border-blue-500 dark:border-blue-400 scale-102 ring-2 ring-blue-500/20 bg-blue-50/10 dark:bg-blue-950/15' 
-                    : ''
-                }`}
-              >
-                {/* Top metadata row */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0 cursor-grab hover:text-slate-600 dark:hover:text-slate-300" />
-                      {sub && topic ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenSubtopic(topic.id, sub.id);
-                          }}
-                          className="inline-flex items-center gap-1.5 text-slate-505 hover:text-blue-650 text-[10px] font-bold font-mono tracking-wide truncate transition-colors cursor-pointer dark:hover:text-blue-450"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: topic.color }} />
-                          <span>{topic.name}</span>
-                          <span className="text-slate-400 font-sans">➔</span>
-                          <span className="underline truncate">{sub.name}</span>
-                        </button>
-                      ) : (
-                        <span className="text-[9px] text-slate-400 font-mono">Attachment</span>
-                      )}
-                    </div>
+          return (
+            <div 
+              key={item.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              onDragOver={(e) => handleDragOver(e, item.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, item.id)}
+              onDragEnd={handleDragEnd}
+              onClick={() => markPdfAsReading(item.id)}
+              className={`border rounded-2xl p-5 relative flex flex-col justify-between gap-4 transition-all hover:border-blue-400 dark:hover:border-slate-700 shadow-3xs text-left cursor-grab active:cursor-grabbing ${cardStyles} ${
+                draggedId === item.id 
+                  ? 'opacity-40 border-dashed border-blue-500 dark:border-blue-400 scale-95 shadow-sm bg-slate-50/50 dark:bg-slate-950/40' 
+                  : ''
+              } ${
+                dragOverId === item.id 
+                  ? 'border-blue-500 dark:border-blue-400 scale-102 ring-2 ring-blue-500/20 bg-blue-50/10 dark:bg-blue-950/15' 
+                  : ''
+              }`}
+            >
+              {/* Playful watercolor blend blobs inside active reading card */}
+              {isReading && (
+                <>
+                  <div className="absolute -right-4 -top-4 w-32 h-32 bg-gradient-to-r from-amber-400/30 dark:from-amber-300/20 via-pink-400/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+                  <div className="absolute -left-6 -bottom-6 w-24 h-24 bg-gradient-to-r from-yellow-400/20 dark:from-yellow-300/10 via-amber-300/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                </>
+              )}
 
-                    <div className="flex items-center gap-1 shrink-0">
-                      {statusBadge}
-                      {isReading && (
-                        <span className="text-[8px] font-black tracking-wider text-amber-605 bg-amber-500/15 px-1 py-0.5 rounded animate-pulse">
-                          🔖 LAST READ
-                        </span>
-                      )}
-                    </div>
+              {/* Top metadata row */}
+              <div className="space-y-2 relative z-10">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0 cursor-grab hover:text-slate-600 dark:hover:text-slate-300" />
+                    {sub && topic ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenSubtopic(topic.id, sub.id);
+                        }}
+                        className="inline-flex items-center gap-1.5 text-slate-550 hover:text-blue-650 text-[10px] font-bold font-mono tracking-wide truncate transition-colors cursor-pointer dark:hover:text-blue-450"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: topic.color }} />
+                        <span>{topic.name}</span>
+                        <span className="text-slate-400 font-sans">➔</span>
+                        <span className="underline truncate">{sub.name}</span>
+                      </button>
+                    ) : (
+                      <span className="text-[9px] text-slate-400 font-mono">Attachment</span>
+                    )}
                   </div>
 
-                  {/* File Title and Filename */}
-                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2">
-                    {item.title}
-                  </h4>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {statusBadge}
+                    {isReading && (
+                      <span className="inline-flex items-center gap-1 text-[8.5px] font-black tracking-wider text-amber-700 bg-amber-500/20 dark:text-amber-300 dark:bg-amber-500/25 px-2 py-0.5 rounded animate-pulse shadow-sm">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-650 dark:text-amber-400 animate-spin" />
+                        <span>READING NOW</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-                  <p className="text-xs text-slate-450 dark:text-slate-450 truncate font-mono bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border dark:border-slate-805">
-                    📄 {item.fileName} ({item.fileSize})
-                  </p>
+                {/* File Title and Filename */}
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2">
+                  {item.title}
+                </h4>
+
+                <p className="text-xs text-slate-450 dark:text-slate-450 truncate font-mono bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border dark:border-slate-805">
+                  📄 {item.fileName} ({item.fileSize})
+                </p>
                 </div>
 
                 {/* Status Switcher segment */}

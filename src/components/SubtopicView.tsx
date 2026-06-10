@@ -257,6 +257,7 @@ export function SubtopicView({
   const [pdfFileSize, setPdfFileSize] = useState('');
   const [pdfSourceType, setPdfSourceType] = useState<'file' | 'url'>('file');
   const [pdfFileData, setPdfFileData] = useState<string>('');
+  const [pdfEnableLinkedNote, setPdfEnableLinkedNote] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // YouTube Playlist Importer inside Subtopic state
@@ -778,6 +779,7 @@ export function SubtopicView({
         fileSize: pdfSourceType === 'file' ? (pdfFileSize || '250 KB') : 'External URL',
         fileData: pdfSourceType === 'file' ? pdfFileData : undefined,
         url: pdfSourceType === 'url' ? manualUrl : undefined,
+        enableLinkedNote: pdfEnableLinkedNote,
         createdAt: new Date().toISOString()
       };
       onUpdateDb({ pdfs: [...dbState.pdfs, newPdf] });
@@ -858,6 +860,7 @@ export function SubtopicView({
     setPdfFileSize('');
     setPdfFileData('');
     setPdfSourceType('file');
+    setPdfEnableLinkedNote(false);
     setModalOpen(false);
   };
 
@@ -874,6 +877,36 @@ export function SubtopicView({
       return { ...p, isReading: false };
     });
     onUpdateDb({ pdfs: updated });
+  };
+
+  const triggerLinkedNote = (resourceId: string, resourceTitle: string, resourceType: 'pdf' | 'assignment' | 'book' | 'video') => {
+    const quickNotes = dbState.quickNotes || [];
+    const existingNote = quickNotes.find(q => q.linkedResourceId === resourceId && q.linkedResourceType === resourceType);
+    
+    if (existingNote) {
+      localStorage.setItem('target_quick_note_id', existingNote.id);
+    } else {
+      const newNoteId = `qnote-${Date.now()}`;
+      const newNote = {
+        id: newNoteId,
+        title: `Note: ${resourceTitle}`,
+        content: `<div><strong>Linked Resource:</strong> <span style="background-color: #fef08a; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: black; font-family: monospace;">${resourceType.toUpperCase()}: ${resourceTitle}</span></div><br><div>Start typing your notes about this ${resourceType}...</div>`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isPinned: true,
+        isFavorite: false,
+        color: '#fbbf24',
+        linkedResourceId: resourceId,
+        linkedResourceType: resourceType,
+        linkedResourceTitle: resourceTitle
+      };
+      onUpdateDb({ quickNotes: [newNote, ...quickNotes] });
+      localStorage.setItem('target_quick_note_id', newNoteId);
+    }
+    
+    if (onSelectView) {
+      onSelectView('quicknotes');
+    }
   };
 
   const updatePdfStatus = (pdfId: string, status: 'unseen' | 'reading' | 'completed' | 'revision') => {
@@ -2474,7 +2507,7 @@ export function SubtopicView({
               let encouragementMsg = "";
 
               if (isReading) {
-                cardStyles = "border-amber-400 dark:border-amber-500 bg-amber-50/[0.04] dark:bg-amber-955/[0.02] shadow-[0_0_15px_rgba(245,158,11,0.12)] ring-1 ring-amber-400/40";
+                cardStyles = "border-amber-400 dark:border-amber-550 ring-4 ring-amber-400/25 dark:ring-amber-950/40 shadow-[0_10px_35px_rgba(245,158,11,0.18)] bg-gradient-to-tr from-orange-50/50 via-amber-50/30 to-rose-50/50 dark:from-orange-950/10 dark:via-amber-950/15 dark:to-rose-950/10";
               } else if (status === 'completed' || pdf.isCompleted) {
                 cardStyles = "border-emerald-250 dark:border-emerald-900 bg-emerald-500/[0.01]/10 dark:bg-emerald-950/[0.01]";
               } else if (status === 'revision' || pdf.needsRevision) {
@@ -2505,9 +2538,17 @@ export function SubtopicView({
                 <div 
                   key={pdf.id} 
                   onClick={handleOpenPdfFile}
-                  className={`group flex flex-col p-4 rounded-xl border transition-all cursor-pointer ${cardStyles}`}
+                  className={`group relative overflow-hidden flex flex-col p-4 rounded-xl border transition-all cursor-pointer ${cardStyles}`}
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+                  {/* Playful watercolor blend blobs inside active reading card */}
+                  {isReading && (
+                    <>
+                      <div className="absolute -right-4 -top-4 w-32 h-32 bg-gradient-to-r from-amber-400/20 dark:from-amber-300/10 via-pink-400/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                      <div className="absolute -left-6 -bottom-6 w-24 h-24 bg-gradient-to-r from-yellow-400/15 dark:from-yellow-300/5 via-amber-300/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                    </>
+                  )}
+
+                  <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                     <div className="flex items-start sm:items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/30 text-red-650 flex items-center justify-center shrink-0">
                         <FileText className="w-5.5 h-5.5 text-red-600" />
@@ -2516,8 +2557,9 @@ export function SubtopicView({
                         <div className="flex flex-wrap items-center gap-1.5 mb-1">
                           {statusBadge}
                           {isReading && (
-                            <span className="text-[9px] font-black tracking-wider text-amber-600 bg-amber-500/15 px-1.5 py-0.5 rounded animate-pulse">
-                              🔖 LAST OPENED
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black tracking-wider text-amber-700 bg-amber-500/20 dark:text-amber-300 dark:bg-amber-500/25 px-2 py-0.5 rounded animate-pulse shadow-sm">
+                              <Sparkles className="w-2.5 h-2.5 text-amber-655 dark:text-amber-400 animate-spin" />
+                              <span>ACTIVE FOCUS</span>
                             </span>
                           )}
                         </div>
@@ -2566,6 +2608,22 @@ export function SubtopicView({
                         <BookOpen className="w-3 h-3" />
                         <span>Open</span>
                       </button>
+
+                      {/* Connected Quick Note Button */}
+                      {pdf.enableLinkedNote && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            triggerLinkedNote(pdf.id, pdf.title, 'pdf');
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg transition-colors flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider font-mono border border-amber-500/20 cursor-pointer"
+                          title="Open connected study note"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0 inline-block" />
+                          <span>Note</span>
+                        </button>
+                      )}
 
                       {/* Edit PDF Button */}
                       <button 
@@ -3719,9 +3777,24 @@ export function SubtopicView({
                         onChange={(e) => setManualUrl(e.target.value)}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-sans"
                       />
-                      <p className="text-[10px] text-slate-400 font-mono mt-1">Provide external hyperlink to save as reference</p>
+                       <p className="text-[10px] text-slate-400 font-mono mt-1">Provide external hyperlink to save as reference</p>
                     </div>
                   )}
+
+                  {/* Connected Quick Notes toggle option matching AllPdfsView */}
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 animate-in fade-in">
+                    <input
+                      type="checkbox"
+                      id="pdfEnableLinkedNoteSubtopic"
+                      checked={pdfEnableLinkedNote}
+                      onChange={(e) => setPdfEnableLinkedNote(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer shrink-0"
+                    />
+                    <label htmlFor="pdfEnableLinkedNoteSubtopic" className="text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                      Enable Connected Quick Note 🔗
+                      <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Creates a floating Study note linkage for active reference reading.</span>
+                    </label>
+                  </div>
                 </div>
               )}
 

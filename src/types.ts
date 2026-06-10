@@ -57,7 +57,7 @@ export interface QuickNoteItem {
   isFavorite?: boolean;
   color?: string;
   linkedResourceId?: string;
-  linkedResourceType?: 'book' | 'assignment' | 'pdf' | 'video';
+  linkedResourceType?: 'book' | 'assignment' | 'pdf' | 'video' | 'subtopic' | 'note' | 'quicknote' | 'concept' | 'quiz' | 'coding' | 'interview' | 'todo';
   linkedResourceTitle?: string;
 }
 
