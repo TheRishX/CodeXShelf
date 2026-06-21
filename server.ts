@@ -133,6 +133,209 @@ app.post("/api/data", (req, res) => {
   }
 });
 
+// Helper: check or create screenshots folder in Google Drive
+async function getOrCreateFolder(username: string, token: string): Promise<string> {
+  const folderName = `${username} Screenshots Notes`;
+  
+  // 1. Search for folder
+  const query = encodeURIComponent(`name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+
+  if (!searchRes.ok) {
+    const errText = await searchRes.text();
+    throw new Error(`Failed to search for folder in Google Drive: ${errText}`);
+  }
+
+  const searchData = await searchRes.json() as any;
+  if (searchData.files && searchData.files.length > 0) {
+    return searchData.files[0].id;
+  }
+
+  // 2. Folder not found, create it
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder'
+    })
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`Failed to create screenshots folder: ${errText}`);
+  }
+
+  const createData = await createRes.json() as any;
+  return createData.id;
+}
+
+// Google Drive Screenshots Integration APIs
+
+// API to list screenshots
+app.get("/api/drive/screenshots", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  const username = req.query.username as string || "DefaultUser";
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: "Missing authorization token" });
+  }
+
+  try {
+    const folderId = await getOrCreateFolder(username, token);
+    
+    // List all files inside parents of folderId
+    const query = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,webViewLink,size)&orderBy=createdTime%20desc`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!listRes.ok) {
+      const errText = await listRes.text();
+      return res.status(listRes.status).json({ success: false, error: `Failed to list files: ${errText}` });
+    }
+
+    const listData = await listRes.json() as any;
+    res.json({ success: true, files: listData.files || [] });
+  } catch (error: any) {
+    console.error("Error in /api/drive/screenshots GET:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API to upload pasted screenshot
+app.post("/api/drive/screenshots", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  const { username, name, mimeType, base64Data } = req.body;
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: "Missing authorization token" });
+  }
+
+  if (!base64Data) {
+    return res.status(400).json({ success: false, error: "Missing base64Data image payload" });
+  }
+
+  try {
+    const folderId = await getOrCreateFolder(username || "DefaultUser", token);
+
+    // Filter out potential metadata header if exists (e.g. data:image/png;base64,...)
+    const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Clean, "base64");
+
+    const boundary = "screenshot_boundary_token_xyz_998877";
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const close_delim = `\r\n--${boundary}--`;
+
+    const metadata = {
+      name: name || `screenshot_${Date.now()}.png`,
+      parents: [folderId]
+    };
+
+    const multipartBody = Buffer.concat([
+      Buffer.from(delimiter + "Content-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(metadata) + delimiter + "Content-Type: " + (mimeType || "image/png") + "\r\n\r\n"),
+      buffer,
+      Buffer.from(close_delim)
+    ]);
+
+    const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+        "Content-Length": multipartBody.length.toString()
+      },
+      body: multipartBody
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      return res.status(uploadRes.status).json({ success: false, error: `Google Drive file write failed: ${errText}` });
+    }
+
+    const uploadData = await uploadRes.json() as any;
+    res.json({ success: true, file: uploadData });
+  } catch (error: any) {
+    console.error("Error in /api/drive/screenshots POST:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API file downloading proxy with in-line query param token support (perfect for img elements)
+app.get("/api/drive/file/:fileId", async (req, res) => {
+  const fileId = req.params.fileId;
+  const token = req.query.token as string || req.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: "Missing credential token" });
+  }
+
+  try {
+    // 1. Fetch metadata in parallel or sequence to read mimeType
+    const metadataRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=mimeType`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    let mimeType = "image/png";
+    if (metadataRes.ok) {
+      const metadata = await metadataRes.json() as any;
+      mimeType = metadata.mimeType || "image/png";
+    }
+
+    // 2. Fetch media bytes
+    const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!fileRes.ok) {
+      const errText = await fileRes.text();
+      return res.status(fileRes.status).json({ success: false, error: `Failed to download file: ${errText}` });
+    }
+
+    const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=31536000"); // 1 year cache
+    res.send(buffer);
+  } catch (error: any) {
+    console.error("Error in /api/drive/file proxy:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API to delete a screenshot
+app.delete("/api/drive/screenshots/:fileId", async (req, res) => {
+  const fileId = req.params.fileId;
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: "Missing authorization token" });
+  }
+
+  try {
+    const deleteRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: "DELETE",
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!deleteRes.ok) {
+      const errText = await deleteRes.text();
+      return res.status(deleteRes.status).json({ success: false, error: `Failed to delete file: ${errText}` });
+    }
+
+    res.json({ success: true, message: "File removed successfully" });
+  } catch (error: any) {
+    console.error("Error in /api/drive/screenshots delete:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 3. Gemini Prompt Generator endpoint
 app.post("/api/gemini/generate", async (req, res) => {
   const { type: rawType, topicName, subtopicName, context } = req.body;

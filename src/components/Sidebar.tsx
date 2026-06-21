@@ -4,7 +4,7 @@ import {
   GraduationCap, Code, Database, Cloud, Cpu, Layers, Atom, Terminal, Globe,
   Network, BrainCircuit, Compass, Award, Coffee, Lock, FileText, Server, Landmark,
   Lightbulb, ClipboardCheck, Video, BookOpen, HelpCircle, Laptop, Flame, GripVertical,
-  Pencil, ClipboardList, Eye, EyeOff, Trash2, Settings
+  Pencil, ClipboardList, Eye, EyeOff, Trash2, Settings, Image
 } from 'lucide-react';
 import { Topic, CustomUser, DatabaseState } from '../types';
 
@@ -171,7 +171,8 @@ export function Sidebar({
     { id: 'notes', label: 'Topic Notes Scratchpads', icon: FileText, colorClass: 'text-slate-600', activeBg: 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-350 border-slate-400 dark:border-slate-500', desc: 'Isolated quick notes lists across all active subtopic modules' },
     { id: 'coding', label: 'Sandbox Labs', icon: Code, colorClass: 'text-amber-600', activeBg: 'bg-amber-500/10 dark:bg-amber-955/20 text-amber-600 dark:text-amber-450 border-amber-500 dark:border-amber-400', desc: 'Interactive developer sandbox for syntax structures & programmatic practice tests' },
     { id: 'interviews', label: 'Simulation Interviews', icon: BrainCircuit, colorClass: 'text-teal-600', activeBg: 'bg-teal-50/50 dark:bg-teal-950/10 text-teal-600 dark:text-teal-450 border-teal-600 dark:border-teal-500', desc: 'Simulated system interview scenario lists sorted by role target tiers' },
-    { id: 'quizzes', label: 'Assessment Arena', icon: Cpu, colorClass: 'text-cyan-600', activeBg: 'bg-cyan-50/50 dark:bg-cyan-955/10 text-cyan-655 dark:text-cyan-400 border-cyan-600 dark:border-cyan-500', desc: 'Active recall multiple-choice question arrays center with explanation sheets' }
+    { id: 'quizzes', label: 'Assessment Arena', icon: Cpu, colorClass: 'text-cyan-600', activeBg: 'bg-cyan-50/50 dark:bg-cyan-955/10 text-cyan-655 dark:text-cyan-400 border-cyan-600 dark:border-cyan-500', desc: 'Active recall multiple-choice question arrays center with explanation sheets' },
+    { id: 'screenshots', label: 'Image Screenshots', icon: Image, colorClass: 'text-violet-500', activeBg: 'bg-violet-50/50 dark:bg-violet-955/15 text-violet-650 dark:text-violet-400 border-violet-650 dark:border-violet-500', desc: 'Paste and sync image pasteboard screenshots from Google Drive folder automatically' }
   ];
 
   const DEFAULT_MENU_ITEMS = ALL_POSSIBLE_MENU_ITEMS.map(item => ({
@@ -179,7 +180,7 @@ export function Sidebar({
     label: customMenuLabels?.[item.id] || item.label
   }));
 
-  const defaultSidebarItems = ['dashboard', 'bookshelf', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes'];
+  const defaultSidebarItems = ['dashboard', 'bookshelf', 'topicshelf', 'pdfs', 'videos', 'concepts', 'trackers', 'assignments', 'quicknotes', 'screenshots'];
   let currentActiveSidebarItems = activeSidebarItems && activeSidebarItems.length > 0
     ? activeSidebarItems
     : defaultSidebarItems;

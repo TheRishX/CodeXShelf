@@ -28,6 +28,7 @@ const LOCAL_STORAGE_THEME_KEY = 'codexshelf_theme_preference_v1';
 
 import { StudyTodoView } from './components/StudyTodoView';
 import { BookshelfView } from './components/BookshelfView';
+import { ImageScreenshotsView } from './components/ImageScreenshotsView';
 
 import { 
   Laptop, BookOpen, CheckSquare, ClipboardList, Flame, Sparkles, Award, X
@@ -652,6 +653,14 @@ export default function App() {
       );
     }
 
+    if (activeView === 'screenshots') {
+      return (
+        <ImageScreenshotsView
+          currentUser={currentUser}
+        />
+      );
+    }
+
     // Check if subtopic detailed route
     if (activeView.includes('::')) {
       const [topicId, subtopicId] = activeView.split('::');
@@ -749,6 +758,7 @@ export default function App() {
                activeView === 'quizzes' ? 'Assessment Arena' :
                activeView === 'pdfs' ? 'Reference Documents' :
                activeView === 'assignments' ? 'Laboratory Assignments' :
+               activeView === 'screenshots' ? 'Screenshots Sync' :
                activeView.includes('::') ? 'Subtopic Lab' : 'Topic Overview'}
             </span>
           </div>
